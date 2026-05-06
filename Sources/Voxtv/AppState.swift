@@ -11,6 +11,13 @@ final class AppState: ObservableObject {
     @Published var serverRunning = false
     @Published var appleTVDeviceId: String = ""
 
+    // Wake word pipeline config
+    @Published var promptType: String = "beep"
+    @Published var promptText: String = "请说"
+    @Published var feedbackEnabled: Bool = true
+    @Published var recognitionTimeout: Double = 8.0
+    @Published var cooldownDuration: Double = 3.0
+
     private var dashboard: DashboardServer?
     private let defaults = UserDefaults.standard
     private var settingsWindow: NSWindow?
@@ -22,6 +29,15 @@ final class AppState: ObservableObject {
             dashboardPort = UInt16(saved)
         }
         appleTVDeviceId = defaults.string(forKey: "appleTVDeviceId") ?? ""
+        promptType = defaults.string(forKey: "promptType") ?? "beep"
+        promptText = defaults.string(forKey: "promptText") ?? "请说"
+        if defaults.object(forKey: "feedbackEnabled") != nil {
+            feedbackEnabled = defaults.bool(forKey: "feedbackEnabled")
+        }
+        let savedTimeout = defaults.double(forKey: "recognitionTimeout")
+        if savedTimeout > 0 { recognitionTimeout = savedTimeout }
+        let savedCooldown = defaults.double(forKey: "cooldownDuration")
+        if savedCooldown > 0 { cooldownDuration = savedCooldown }
         updateDashboardURL()
     }
 
@@ -56,6 +72,31 @@ final class AppState: ObservableObject {
         defaults.set(appleTVDeviceId, forKey: "appleTVDeviceId")
     }
 
+    func savePromptType(_ type: String) {
+        promptType = type
+        defaults.set(type, forKey: "promptType")
+    }
+
+    func savePromptText(_ text: String) {
+        promptText = text
+        defaults.set(text, forKey: "promptText")
+    }
+
+    func saveFeedbackEnabled(_ enabled: Bool) {
+        feedbackEnabled = enabled
+        defaults.set(enabled, forKey: "feedbackEnabled")
+    }
+
+    func saveRecognitionTimeout(_ timeout: Double) {
+        recognitionTimeout = timeout
+        defaults.set(timeout, forKey: "recognitionTimeout")
+    }
+
+    func saveCooldownDuration(_ duration: Double) {
+        cooldownDuration = duration
+        defaults.set(duration, forKey: "cooldownDuration")
+    }
+
     var deviceConfigured: Bool {
         !appleTVDeviceId.isEmpty
     }
@@ -75,7 +116,7 @@ final class AppState: ObservableObject {
         let window = NSWindow(contentViewController: hosting)
         window.title = "Voxtv 设置"
         window.styleMask = [.titled, .closable, .miniaturizable]
-        window.setContentSize(NSSize(width: 380, height: 260))
+        window.setContentSize(NSSize(width: 400, height: 380))
         window.center()
         window.isReleasedWhenClosed = false
 

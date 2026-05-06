@@ -63,6 +63,67 @@ struct SettingsView: View {
             }
 
             VStack(alignment: .leading, spacing: 12) {
+                Text("语音交互")
+                    .font(.headline)
+
+                Picker("提示音类型:", selection: Binding(
+                    get: { appState.promptType },
+                    set: { appState.savePromptType($0) }
+                )) {
+                    Text("系统提示音").tag("beep")
+                    Text("TTS 语音").tag("tts")
+                }
+                .pickerStyle(.radioGroup)
+
+                if appState.promptType == "tts" {
+                    HStack {
+                        Text("提示文案:")
+                        TextField("请说", text: Binding(
+                            get: { appState.promptText },
+                            set: { appState.savePromptText($0) }
+                        ))
+                        .frame(width: 150)
+                    }
+                }
+
+                HStack {
+                    Text("识别超时:")
+                    Picker("", selection: Binding(
+                        get: { Int(appState.recognitionTimeout) },
+                        set: { appState.saveRecognitionTimeout(Double($0)) }
+                    )) {
+                        Text("5 秒").tag(5)
+                        Text("8 秒").tag(8)
+                        Text("10 秒").tag(10)
+                        Text("15 秒").tag(15)
+                    }
+                    .frame(width: 80)
+                }
+
+                HStack {
+                    Text("唤醒冷却:")
+                    Picker("", selection: Binding(
+                        get: { Int(appState.cooldownDuration) },
+                        set: { appState.saveCooldownDuration(Double($0)) }
+                    )) {
+                        Text("2 秒").tag(2)
+                        Text("3 秒").tag(3)
+                        Text("5 秒").tag(5)
+                    }
+                    .frame(width: 80)
+                }
+
+                Toggle("语音反馈播报", isOn: Binding(
+                    get: { appState.feedbackEnabled },
+                    set: { appState.saveFeedbackEnabled($0) }
+                ))
+            }
+            .padding()
+            .tabItem {
+                Label("语音", systemImage: "waveform")
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
                 Text("Dashboard")
                     .font(.headline)
 
@@ -89,6 +150,6 @@ struct SettingsView: View {
                 Label("Dashboard", systemImage: "globe")
             }
         }
-        .frame(width: 360, height: 200)
+        .frame(width: 380, height: 320)
     }
 }

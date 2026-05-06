@@ -13,6 +13,9 @@ final class DashboardServer: @unchecked Sendable {
     var speechService: SpeechService?
     var logStore: LogStore?
     var keywordSpotter: KeywordSpotterService?
+    var wakePipeline: WakePipeline?
+    var promptPlayer: PromptPlayer?
+    var feedbackSpeaker: FeedbackSpeaker?
     private var kwsDetections: [(Date, String)] = []
     private let kwsDetectionsMax = 50
     private let appJSON = "application/json; charset=utf-8"
@@ -280,8 +283,9 @@ final class DashboardServer: @unchecked Sendable {
         let speechOk = speechService?.speechPermission ?? false
         let deviceConfigured = appleTVBridge?.deviceId.isEmpty == false
 
+        let plState = wakePipeline?.state.rawValue ?? "unavailable"
         let json = """
-        {"state":"idle","stateSince":"\(ISO8601DateFormatter().string(from: Date()))","speech":{"microphoneAuthorized":\(micOk),"speechAuthorized":\(speechOk)},"appleTV":{"configured":\(deviceConfigured)},"kws":{"state":"\(keywordSpotter?.state.rawValue ?? "unavailable")"}}
+        {"state":"idle","stateSince":"\(ISO8601DateFormatter().string(from: Date()))","speech":{"microphoneAuthorized":\(micOk),"speechAuthorized":\(speechOk)},"appleTV":{"configured":\(deviceConfigured)},"kws":{"state":"\(keywordSpotter?.state.rawValue ?? "unavailable")"},"pipeline":{"state":"\(plState)"}}
         """
         return (200, json, "application/json; charset=utf-8")
     }

@@ -42,6 +42,39 @@ struct VoxtvApp: App {
             dash.recordKWSDetection(keyword)
         }
         dashboard.keywordSpotter = kwSpotter
+
+        // Create pipeline components
+        let promptPlayer = PromptPlayer()
+        let feedbackSpeaker = FeedbackSpeaker()
+        let commandDispatcher = CommandDispatcher()
+
+        // Create wake pipeline
+        let wakePipeline = WakePipeline(
+            spotter: kwSpotter,
+            speech: dashboard.speechService,
+            bridge: dashboard.appleTVBridge,
+            dispatcher: commandDispatcher,
+            prompt: promptPlayer,
+            feedback: feedbackSpeaker
+        )
+
+        // Mirror AppState config to pipeline
+        wakePipeline.promptType = appState.promptType
+        wakePipeline.promptText = appState.promptText
+        wakePipeline.feedbackEnabled = appState.feedbackEnabled
+        wakePipeline.recognitionTimeout = appState.recognitionTimeout
+        wakePipeline.cooldownDuration = appState.cooldownDuration
+
+        // Log pipeline state changes
+        let store = logStore
+        wakePipeline.onStateChange = { state in
+            Task { await store.append(level: .info, message: "Pipeline: \(state.rawValue)") }
+        }
+
+        dashboard.wakePipeline = wakePipeline
+        dashboard.promptPlayer = promptPlayer
+        dashboard.feedbackSpeaker = feedbackSpeaker
+
         appState.bind(dashboard)
     }
 
