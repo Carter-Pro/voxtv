@@ -53,7 +53,14 @@
     <h2>唤醒词测试 (KWS)</h2>
     <div style="margin-bottom:8px">
       <label style="font-size:13px;color:#999">关键词 tokens (ppinyin 格式，每行一个，支持 :score #threshold @phrase)</label>
-      <textarea id="kws-keywords" style="width:100%;height:60px;background:#1a1a2e;color:#e0e0e0;border:1px solid #444;border-radius:8px;padding:8px;font-size:13px;resize:vertical" placeholder="n ǐ h ǎo x iǎo V :2.0 #0.5 @你好小V"></textarea>
+      <textarea id="kws-keywords" style="width:100%;height:160px;background:#1a1a2e;color:#e0e0e0;border:1px solid #444;border-radius:8px;padding:8px;font-size:13px;resize:vertical">n ǐ h ǎo j ūn g ē @你好军哥
+d àn g ē d àn g ē @蛋哥蛋哥
+x iǎo ài t óng x ué @小爱同学
+n ǐ h ǎo w èn w èn @你好问问
+x iǎo y ì x iǎo y ì @小艺小艺
+x iǎo m ǐ x iǎo m ǐ @小米小米
+l ín m ěi l ì @林美丽
+n ǐ h ǎo x ī x ī @你好西西</textarea>
     </div>
     <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
       <label style="font-size:13px;color:#999">阈值: <span id="kws-threshold-val">0.25</span></label>
@@ -279,7 +286,7 @@ kwsStartBtn.addEventListener('click', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        keywordsBuf: keywords.join('/'),
+        keywordsBuf: keywords.join('\n'),
         threshold: parseFloat(kwsThreshold.value)
       })
     });

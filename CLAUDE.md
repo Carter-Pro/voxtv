@@ -107,35 +107,30 @@ atvremote --id <device_id> text_set="<text>"
 
 ---
 
-### Phase 1B：全局快捷键 Push-to-Talk
+### Phase 1B：全局快捷键 Push-to-Talk（已跳过）
 
-实现：
-
-- macOS 全局快捷键触发 Push-to-Talk
-- 按下开始录音
-- 松开结束录音
-- 复用 Phase 1A 的 `SessionController`
-
-不实现：
-
-- 唤醒词
-- iOS App
-- 自动控制 tvOS App UI
+决定：跳过 Phase 1B，直接进入 Phase 2。理由：产品原型已可用，全局快捷键对客厅场景价值有限。
 
 ---
 
-### Phase 2：Porcupine 本地唤醒词
+### Phase 2：sherpa-onnx 本地唤醒词
 
 实现：
 
-- 本地唤醒词监听
-- 唤醒后启动 Apple Speech 短句识别
-- 提示音
-- 误唤醒 / 漏唤醒调试
+- 阶段一：sherpa-onnx 部署 + Dashboard KWS 测试面板
+  - `systemLibrary` + module map 集成 sherpa-onnx xcframework + onnxruntime dylib
+  - 创建 `KeywordSpotterService`（封装 AVAudioEngine + VAD + sherpa-onnx KWS）
+  - Dashboard 测试界面：关键词输入、阈值滑块、VAD 状态、实时检测日志
+  - 真实客厅环境测试候选唤醒词
+- 阶段二：生产唤醒词集成
+  - 锁定唤醒词和参数
+  - 唤醒 → 提示音 → Apple Speech 识别 → TextNormalizer → AppleTVBridge
+  - 常驻运行稳定性
 
 不实现：
 
 - 云端唤醒词
+- 自定义唤醒词训练（使用预训练模型的开放词汇能力）
 - 长时间持续 Apple Speech 识别
 - 复杂语义控制
 
@@ -330,7 +325,7 @@ mouseleave / cancel    -> POST /api/ptt/cancel 或 /api/ptt/end
 - 不要吞掉错误。
 - 不要只报告“完成了”，必须说明如何验证。
 - 不要在没有测试的情况下声称功能正常。
-- 不要提前实现唤醒词、iOS App、Whisper、多 ASR 引擎。
+- 不要提前实现 iOS App、Whisper、多 ASR 引擎。
 - 不要顺手做未要求的优化、重构或扩展功能。
 
 如认为需要额外改动，必须先说明理由并等待确认。

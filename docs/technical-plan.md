@@ -82,7 +82,7 @@ Apple TV 当前输入框
 Phase 2 再增加本地唤醒词：
 
 ```text
-Porcupine 本地唤醒词
+sherpa-onnx 本地唤醒词
   ↓
 启动一次 Apple Speech 短句识别
 ```
@@ -193,8 +193,8 @@ iOS App 不直接控制 Apple TV，而是控制 Mac mini Agent。
 ```text
 Phase 0：Apple TV 控制链路验证，已完成
 Phase 1A：Apple Speech + Web Debug Dashboard + macOS 配置/日志入口 + text_set 闭环
-Phase 1B：全局快捷键 Push-to-Talk
-Phase 2：Porcupine 本地唤醒词
+Phase 1B：全局快捷键 Push-to-Talk（已跳过）
+Phase 2：sherpa-onnx 本地唤醒词
 Phase 3：稳定性与日常使用打磨
 Phase 4：Mac 产品化与上架预研
 ```
@@ -867,32 +867,23 @@ F8
 
 ---
 
-## 18. Phase 1B 注意事项
+## 18. Phase 1B 状态：已跳过
 
-- 全局快捷键可能涉及 Accessibility 权限。
-- 需要明确按下和松开事件。
-- 不能只做普通快捷键 toggle。
-- 必须复用 Phase 1A 的 `SessionController`。
-- 不要复制一套语音识别逻辑。
+Phase 1B（全局快捷键 Push-to-Talk）已决定跳过。理由：
 
----
+- 当前产品原型已可用（Dashboard 语音识别 + Apple TV 发送）。
+- 用户主要场景在客厅，不在电脑前，全局快捷键价值有限。
+- 直接进入 Phase 2 唤醒词，实现真正的免提交互。
 
-## 19. Phase 1B 验收标准
-
-- 可配置全局快捷键。
-- 按下快捷键进入 `listening`。
-- 松开快捷键进入 `finalizing`。
-- 成功识别并发送到 Apple TV。
-- 与 Dashboard PTT 状态不冲突。
-- 并发保护有效。
+Phase 1B 原验收标准保留供未来参考，不做实现。
 
 ---
 
-# Phase 2：Porcupine 本地唤醒词
+# Phase 2：本地唤醒词（sherpa-onnx）
 
-## 20. Phase 2 目标
+## 19. Phase 2 目标
 
-在 Phase 1A 和 1B 可用后，加入本地唤醒词，进一步减少手动触发。
+在 Phase 1A 可用后，加入本地离线唤醒词，实现完全免提交互。
 
 目标交互：
 
@@ -900,61 +891,76 @@ F8
 用户说唤醒词
 Mac mini 播放轻提示音
 用户说片名
-Apple Speech 识别
+Apple Speech 识别 → TextNormalizer → AppleTVBridge
 发送到 Apple TV
 ```
 
----
-
-## 21. Phase 2 技术路线
+## 20. Phase 2 技术路线
 
 ```text
-AVAudioEngine 麦克风输入
+AVAudioEngine 麦克风输入（常驻）
   ↓
-Porcupine 本地唤醒词检测
+sherpa-onnx Keyword Spotter（本地离线，Swift SPM）
   ↓
-SessionController.beginWakeWordSession()
+唤醒词检测
   ↓
-Apple Speech 短句识别
+播放提示音 + Apple Speech 短句识别
+  ↓
+TextNormalizer 文本清洗
   ↓
 AppleTVBridge text_set
 ```
 
-Porcupine 在 macOS 上可通过：
+唤醒词引擎：**sherpa-onnx**（替代原方案 Porcupine）
 
-- C API
-- Objective-C bridge
-- Swift Package 封装
+- 完全开源（Apache 2.0），无需付费或注册
+- Swift 集成方式：`systemLibrary` + module map（非标准 SPM，需手动集成 dylib 和头文件）
+- prebuilt macOS xcframework：`build-swift-macos.sh` 构建或 GitHub Releases 下载
+- 中文预训练 KWS 模型：`sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01`（mobile int8 ~10MB）
+- Silero VAD 模型可选接入（~1.1MB），降低静音时 CPU 占用
 
----
+## 21. Phase 2 分两阶段
 
-## 22. Phase 2 关键验证点
+### 阶段一：sherpa-onnx 部署 + Dashboard 测试界面
 
-- Porcupine 是否稳定支持 macOS。
-- Swift 集成是否可维护。
-- 长时间运行 CPU 占用是否可接受。
-- 客厅 2 米距离唤醒率是否可接受。
-- 电视背景音下误唤醒是否可控。
-- 唤醒后 Apple Speech 是否及时开始。
+**目标**：让 sherpa-onnx 在项目中跑通，在 Dashboard 上提供交互式测试面板，用于验证唤醒词方案可行性和调优参数。
 
----
+**内容**：
+- `systemLibrary` + module map 集成 sherpa-onnx xcframework + onnxruntime dylib
+- 创建 `KeywordSpotterService` 封装 AVAudioEngine + Silero VAD + sherpa-onnx KWS
+- Dashboard 测试面板：关键词输入（支持 ppinyin token 格式）、阈值/boosting 滑块、VAD 语音状态指示、实时检测日志
+- 用真实客厅环境测试候选唤醒词，选择最优方案
 
-## 23. Phase 2 暂不做
+**验收**：
+- Dashboard 上可启动/停止关键词检测
+- 实时显示检测到的关键词
+- 确定一个唤醒率高、误唤醒低的生产唤醒词
+
+### 阶段二：生产唤醒词集成
+
+**前提**：阶段一验证通过。
+
+**内容**：
+- 锁定生产唤醒词和最优阈值
+- 接通完整链路：唤醒 → 提示音 → Apple Speech → TextNormalizer → AppleTVBridge
+- 8 秒识别超时，超时回到监听
+- 常驻运行稳定性（引擎中断恢复、重试、内存管理）
+- Dashboard 显示唤醒词服务状态、最后检测时间、最后识别结果
+
+**验收**：
+- 说唤醒词 → 提示音 → 说片名 → Apple TV 收到文本，全程免提
+- 客厅 2 米距离唤醒率可接受
+- 电视背景音下误唤醒可控
+- 连续运行 4+ 小时不崩溃、无内存泄漏
+
+## 22. Phase 2 暂不做
 
 - 云端唤醒词。
-- 持续 Apple Speech 识别。
+- 持续 Apple Speech 识别（仍为短句识别）。
+- 自定义唤醒词训练（使用预训练模型的开放词汇能力）。
 - 复杂命令控制。
 - 自动打开 App 搜索页。
-
----
-
-## 24. Phase 2 验收标准
-
-- 连续运行 8 小时不崩溃。
-- 正常音量电视背景下误唤醒可接受。
-- 沙发 2 米距离唤醒成功率可接受。
-- 唤醒后 1 秒内进入可说话状态。
-- 唤醒词入口与 PTT 入口复用同一底层会话逻辑。
+- 唤醒词灵敏度 UI 配置（阶段一用 Dashboard 手动调参，阶段二硬编码最优值）。
 
 ---
 
@@ -1015,7 +1021,7 @@ Porcupine 在 macOS 上可通过：
 - 是否需要改为原生协议实现。
 - Speech 权限说明是否符合审核要求。
 - 麦克风常驻监听是否会影响审核。
-- Porcupine SDK 授权是否允许商业发布。
+- sherpa-onnx Apache 2.0 授权是否满足发布要求。
 - Dashboard 是否应该在正式版移除。
 - 是否需要 iOS App 作为正式入口。
 
@@ -1169,34 +1175,32 @@ Mac mini Agent 常驻
 
 ---
 
-### Task 7：全局快捷键 Push-to-Talk
+### Task 7：全局快捷键 Push-to-Talk（已跳过）
 
-目标：
+决定跳过，直接进入 Phase 2。原目标保留供未来参考：
 
 - 实现 Phase 1B。
-- 按下快捷键开始。
-- 松开快捷键结束。
+- 按下快捷键开始，松开结束。
 - 复用 `SessionController`。
-
-验收：
-
-- 快捷键和 Dashboard PTT 不冲突。
-- 快捷键可完成一次完整语音输入。
 
 ---
 
-### Task 8：Porcupine 唤醒词
+### Task 8：本地唤醒词（Phase 2）
 
 目标：
 
-- 实现 Phase 2。
-- 集成本地唤醒词。
-- 唤醒后启动 Apple Speech。
+- 集成 sherpa-onnx 本地唤醒词。
+- 阶段一：Dashboard 测试面板验证方案。
+- 阶段二：锁定唤醒词，接通完整链路。
+- 唤醒后 1 秒内启动 Apple Speech 短句识别。
+- 识别结果经 TextNormalizer → AppleTVBridge 发送。
 
 验收：
 
-- 客厅 2 米距离可唤醒。
-- 电视背景音下误唤醒可接受。
+- Dashboard 可实时测试关键词检测。
+- 客厅 2 米距离唤醒率可接受。
+- 电视背景音下误唤醒可控。
+- 连续运行 4+ 小时稳定。
 
 ---
 
@@ -1228,10 +1232,10 @@ Mac mini Agent 常驻
 
 ## 33. 当前推荐下一步
 
-从 Task 1 开始：
+Phase 1A 已完成（Task 1–4 + TextNormalizer + LogStore），Phase 1B 已跳过。下一步：
 
 ```text
-项目骨架和菜单栏 Agent
+Phase 2 阶段一：sherpa-onnx 部署 + Dashboard 测试界面
 ```
 
 不要直接实现语音识别或 Apple TV 控制。

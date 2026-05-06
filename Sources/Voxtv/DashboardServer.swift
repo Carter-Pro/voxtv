@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import AVFoundation
 
 final class DashboardServer: @unchecked Sendable {
     var port: UInt16
@@ -183,6 +184,9 @@ final class DashboardServer: @unchecked Sendable {
         if method == "GET" && path == "/api/logs" {
             return logResponse()
         }
+        if method == "GET" && path == "/api/logs/raw" {
+            return rawLogResponse()
+        }
         if method == "POST" && path == "/api/kws/start" {
             return handleKWSStart(body: body)
         }
@@ -227,6 +231,28 @@ final class DashboardServer: @unchecked Sendable {
             let json = #"{"ok":false,"error":"\#(err)"}"#
             return (500, json, "application/json; charset=utf-8")
         }
+    }
+
+    private func rawLogResponse() -> (Int, String, String) {
+        guard let store = logStore else {
+            return (200, "(no logs)", "text/plain; charset=utf-8")
+        }
+        final class Box: @unchecked Sendable {
+            var lines: [String] = []
+            let sema: DispatchSemaphore
+            init(sema: DispatchSemaphore) { self.sema = sema }
+        }
+        let box = Box(sema: DispatchSemaphore(value: 0))
+        Task {
+            let entries = await store.all()
+            box.lines = entries.map {
+                let ts = ISO8601DateFormatter().string(from: $0.timestamp)
+                return "[\(ts)] \($0.level.rawValue.uppercased()) \($0.message)"
+            }
+            box.sema.signal()
+        }
+        box.sema.wait()
+        return (200, box.lines.joined(separator: "\n"), "text/plain; charset=utf-8")
     }
 
     private func logResponse() -> (Int, String, String) {
@@ -327,12 +353,42 @@ final class DashboardServer: @unchecked Sendable {
         let threshold = (obj["threshold"] as? Float) ?? 0.25
         let score = (obj["score"] as? Float) ?? 1.0
 
-        do {
-            try spotter.start(keywordsBuf: keywordsBuf, threshold: threshold, score: score)
-            return (200, #"{"ok":true,"state":"listening"}"#, appJSON)
-        } catch {
-            return (500, #"{"ok":false,"error":"\#(error.localizedDescription)"}"#, appJSON)
+        let micAuthorized = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+
+        if micAuthorized {
+            do {
+                try spotter.start(keywordsBuf: keywordsBuf, threshold: threshold, score: score)
+                log(.info, "KWS started")
+                return (200, #"{"ok":true,"state":"listening"}"#, appJSON)
+            } catch {
+                log(.error, "KWS start failed: \(error.localizedDescription)")
+                return (500, #"{"ok":false,"error":"\#(error.localizedDescription)"}"#, appJSON)
+            }
         }
+
+        // Mic not authorized — request permission asynchronously, then start.
+        Task {
+            _ = await MainActor.run {
+                NSApp.setActivationPolicy(.regular)
+                NSApp.activate(ignoringOtherApps: true)
+            }
+            let granted = await AVCaptureDevice.requestAccess(for: .audio)
+            _ = await MainActor.run {
+                NSApp.setActivationPolicy(.accessory)
+            }
+            guard granted else {
+                log(.error, "KWS: microphone permission denied")
+                return
+            }
+            do {
+                try spotter.start(keywordsBuf: keywordsBuf, threshold: threshold, score: score)
+                log(.info, "KWS started (after permission grant)")
+            } catch {
+                log(.error, "KWS start failed: \(error.localizedDescription)")
+            }
+        }
+
+        return (200, #"{"ok":true,"state":"listening"}"#, appJSON)
     }
 
     private func handleKWSStop() -> (Int, String, String) {

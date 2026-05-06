@@ -19,12 +19,29 @@ struct VoxtvApp: App {
         let logStore = LogStore(maxSize: 200)
         dashboard.logStore = logStore
         Task { await logStore.append(level: .info, message: "Voxtv App started") }
-        // Request permissions at startup so dialogs appear once
-        if let speech = dashboard.speechService {
-            Task {
-                _ = await speech.requestPermissions()
+        // Create KeywordSpotterService for keyword wake-up
+        func resolveModelPath(_ rel: String) -> String {
+            if FileManager.default.fileExists(atPath: rel) { return rel }
+            if let rp = Bundle.main.resourcePath {
+                let fp = (rp as NSString).appendingPathComponent(rel)
+                if FileManager.default.fileExists(atPath: fp) { return fp }
             }
+            return rel
         }
+        let kwsModelDir = resolveModelPath("Resources/kws/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile")
+        let kwsVadModel = resolveModelPath("Resources/vad/silero_vad.onnx")
+        let kwSpotter = KeywordSpotterService(
+            modelDir: kwsModelDir,
+            vadModel: kwsVadModel,
+            log: { level, msg in
+                Task { await logStore.append(level: level, message: msg) }
+            }
+        )
+        let dash = dashboard
+        kwSpotter.onDetection = { keyword in
+            dash.recordKWSDetection(keyword)
+        }
+        dashboard.keywordSpotter = kwSpotter
         appState.bind(dashboard)
     }
 
