@@ -68,7 +68,10 @@
       "Bash(curl -sv --max-time 3 -X POST http://localhost:8765/api/speech/start)",
       "Bash(curl -s --max-time 3 -X POST http://localhost:8765/api/speech/stop)",
       "Bash(curl -s --max-time 3 -X POST http://localhost:8765/api/speech/start)",
-      "Bash(git reset *)"
+      "Bash(git reset *)",
+      "Read(//Users/carter/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/subagent-driven-development/**)",
+      "Read(//Users/carter/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/requesting-code-review/**)",
+      "WebFetch(domain:cloud.tencent.com)"
     ],
     "additionalDirectories": [
       "/private/tmp",
