@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voxtv Dashboard</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #1a1a2e; color: #e0e0e0; min-height: 100vh; display: flex; justify-content: center; padding: 20px; }
+  .container { max-width: 480px; width: 100%; }
+  h1 { font-size: 20px; margin-bottom: 20px; color: #e94560; }
+  .card { background: #16213e; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+  .card h2 { font-size: 14px; color: #999; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+  .status-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; }
+  .status-idle { background: #333; color: #999; }
+  .status-listening { background: #1b4f3a; color: #4caf84; }
+  .status-active { background: #1b3f6f; color: #5b9bd5; }
+  .status-success { background: #1b4f3a; color: #4caf84; }
+  .status-error { background: #4f1b1b; color: #e94560; }
+  .state-row { display: flex; align-items: center; gap: 10px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #999; }
+  .listening .dot { background: #4caf84; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .controls { margin-top: 20px; }
+  .btn { display: block; width: 100%; padding: 16px; border: none; border-radius: 12px; font-size: 18px; font-weight: 700; cursor: pointer; margin-bottom: 10px; }
+  .btn-talk { background: #e94560; color: #fff; }
+  .btn-talk:active { background: #c73d54; }
+  .btn-text { background: #333; color: #ccc; }
+  .text-input-row { display: flex; gap: 8px; }
+  .text-input-row input { flex: 1; padding: 12px; border-radius: 8px; border: 1px solid #444; background: #1a1a2e; color: #e0e0e0; font-size: 16px; }
+  .text-input-row button { padding: 12px 16px; border-radius: 8px; border: none; background: #e94560; color: #fff; font-weight: 600; cursor: pointer; }
+  .logs { margin-top: 20px; max-height: 200px; overflow-y: auto; }
+  .log-entry { font-family: monospace; font-size: 12px; padding: 4px 0; border-bottom: 1px solid #222; color: #888; }
+  #kws-start-btn:active { opacity: 0.8; }
+  #kws-threshold { accent-color: #4caf84; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Voxtv Dashboard</h1>
+  <div class="card" id="status-card">
+    <h2>状态</h2>
+    <div class="state-row">
+      <div class="dot"></div>
+      <span id="state-label">idle</span>
+    </div>
+  </div>
+  <div class="card" id="result-card" style="display:none">
+    <h2>识别结果</h2>
+    <div id="result-text"></div>
+  </div>
+  <div class="card" id="kws-card">
+    <h2>唤醒词测试 (KWS)</h2>
+    <div style="margin-bottom:8px">
+      <label style="font-size:13px;color:#999">关键词 tokens (ppinyin 格式，每行一个，支持 :score #threshold @phrase)</label>
+      <textarea id="kws-keywords" style="width:100%;height:60px;background:#1a1a2e;color:#e0e0e0;border:1px solid #444;border-radius:8px;padding:8px;font-size:13px;resize:vertical" placeholder="n ǐ h ǎo x iǎo V :2.0 #0.5 @你好小V"></textarea>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+      <label style="font-size:13px;color:#999">阈值: <span id="kws-threshold-val">0.25</span></label>
+      <input type="range" id="kws-threshold" min="0.05" max="0.95" step="0.05" value="0.25" style="flex:1;min-width:80px">
+      <button id="kws-start-btn" style="padding:8px 16px;border:none;border-radius:8px;background:#4caf84;color:#fff;font-weight:600;cursor:pointer;font-size:14px">开始监听</button>
+    </div>
+    <div id="kws-vad-status" style="font-size:12px;color:#666;margin-bottom:4px">VAD: --</div>
+    <div id="kws-detections" style="max-height:120px;overflow-y:auto;font-family:monospace;font-size:12px;color:#4caf84"></div>
+  </div>
+  <div class="controls">
+    <button class="btn btn-talk" id="ptt-btn">点击开始语音识别</button>
+    <div class="text-input-row">
+      <input type="text" id="manual-text" placeholder="输入文本并发送到 Apple TV...">
+      <button id="send-btn">发送</button>
+    </div>
+    <div id="send-status" style="margin-top:8px;font-size:13px;min-height:20px;"></div>
+    <div id="speech-status" style="margin-top:8px;font-size:13px;min-height:20px;"></div>
+  </div>
+  <div class="card logs">
+    <h2>日志</h2>
+    <div id="log-list">连接中...</div>
+  </div>
+</div>
+<script>
+const stateLabel = document.getElementById('state-label');
+const statusCard = document.getElementById('status-card');
+const sendBtn = document.getElementById('send-btn');
+const manualText = document.getElementById('manual-text');
+const sendStatus = document.getElementById('send-status');
+const pttBtn = document.getElementById('ptt-btn');
+
+function updateStatus() {
+  fetch('/api/status')
+    .then(r => r.json())
+    .then(data => {
+      stateLabel.textContent = data.state;
+      statusCard.className = 'card';
+      if (data.state === 'listening' || data.state === 'finalizing') {
+        statusCard.classList.add('listening');
+      }
+    })
+    .catch(() => { stateLabel.textContent = 'offline'; });
+}
+
+sendBtn.addEventListener('click', () => {
+  const text = manualText.value.trim();
+  if (!text) return;
+  sendBtn.disabled = true;
+  sendBtn.textContent = '发送中...';
+  sendStatus.textContent = '';
+  fetch('/api/apple-tv/send-text', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: text })
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        sendStatus.innerHTML = '<span style="color:#4caf84">已发送: ' + text + '</span>';
+        manualText.value = '';
+      } else {
+        sendStatus.innerHTML = '<span style="color:#e94560">发送失败: ' + (data.error || 'unknown') + '</span>';
+      }
+    })
+    .catch(err => {
+      sendStatus.innerHTML = '<span style="color:#e94560">网络错误</span>';
+    })
+    .finally(() => {
+      sendBtn.disabled = false;
+      sendBtn.textContent = '发送';
+    });
+});
+
+// --- Speech recognition (single-shot, Safari-reliable) ---
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null;
+let isRecognizing = false;
+let hasResult = false;
+let noSpeechTimeout = null;
+const speechStatus = document.getElementById('speech-status');
+
+function startRecognition() {
+  if (!SpeechRecognition) {
+    speechStatus.innerHTML = '<span style="color:#e94560">浏览器不支持语音识别</span>';
+    return;
+  }
+
+  recognition = new SpeechRecognition();
+  recognition.lang = 'zh-CN';
+  recognition.interimResults = true;
+  recognition.continuous = false;
+
+  recognition.onstart = () => {
+    isRecognizing = true;
+    hasResult = false;
+    pttBtn.textContent = '停止识别';
+    pttBtn.style.background = '#c73d54';
+    speechStatus.textContent = '正在听...';
+    statusCard.classList.add('listening');
+    noSpeechTimeout = setTimeout(() => {
+      if (recognition && !hasResult) {
+        speechStatus.innerHTML = '<span style="color:#e94560">未检测到语音</span>';
+        recognition.stop();
+      }
+    }, 8000);
+  };
+
+  recognition.onresult = (event) => {
+    clearTimeout(noSpeechTimeout);
+    let final = '';
+    let interim = '';
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const t = event.results[i][0].transcript.trim();
+      if (event.results[i].isFinal) { final += t; } else { interim += t; }
+    }
+    if (final) {
+      hasResult = true;
+      speechStatus.innerHTML = '<span style="color:#4caf84">识别结果: ' + final + '</span>';
+      fetch('/api/apple-tv/send-text', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: final })
+      });
+    } else if (interim) {
+      speechStatus.textContent = interim;
+    }
+  };
+
+  recognition.onerror = (event) => {
+    clearTimeout(noSpeechTimeout);
+    if (event.error === 'no-speech') {
+      speechStatus.innerHTML = '<span style="color:#e94560">未检测到语音</span>';
+    } else if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+      speechStatus.innerHTML = '<span style="color:#e94560">语音识别不可用</span>';
+    } else if (event.error !== 'aborted') {
+      speechStatus.innerHTML = '<span style="color:#e94560">识别错误: ' + event.error + '</span>';
+    }
+    resetSpeechButton();
+  };
+
+  recognition.onend = () => {
+    clearTimeout(noSpeechTimeout);
+    if (!hasResult && isRecognizing) {
+      speechStatus.innerHTML = '<span style="color:#e94560">未检测到语音</span>';
+    }
+    resetSpeechButton();
+  };
+
+  try {
+    recognition.start();
+  } catch(e) {
+    speechStatus.innerHTML = '<span style="color:#e94560">启动失败</span>';
+    resetSpeechButton();
+  }
+}
+
+pttBtn.addEventListener('click', () => {
+  if (isRecognizing) {
+    recognition && recognition.stop();
+  } else {
+    startRecognition();
+  }
+});
+
+function resetSpeechButton() {
+  clearTimeout(noSpeechTimeout);
+  isRecognizing = false;
+  hasResult = false;
+  recognition = null;
+  pttBtn.textContent = '点击开始语音识别';
+  pttBtn.style.background = '#e94560';
+  statusCard.classList.remove('listening');
+}
+
+manualText.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') sendBtn.click();
+});
+
+updateStatus();
+setInterval(() => { updateStatus(); updateLogs(); updateKWS(); }, 2000);
+
+async function updateLogs() {
+  try {
+    const r = await fetch('/api/logs');
+    const entries = await r.json();
+    const logList = document.getElementById('log-list');
+    if (entries.length === 0) {
+      logList.innerHTML = '<div class="log-entry">暂无日志</div>';
+    } else {
+      logList.innerHTML = entries.slice(-20).reverse()
+        .map(e => `<div class="log-entry">[${new Date(e.timestamp).toLocaleTimeString()}] ${e.level.toUpperCase()} ${e.message}</div>`)
+        .join('');
+    }
+  } catch(e) {
+    document.getElementById('log-list').textContent = '日志加载失败';
+  }
+}
+// --- KWS Test Panel ---
+const kwsStartBtn = document.getElementById('kws-start-btn');
+const kwsKeywords = document.getElementById('kws-keywords');
+const kwsThreshold = document.getElementById('kws-threshold');
+const kwsThresholdVal = document.getElementById('kws-threshold-val');
+const kwsDetections = document.getElementById('kws-detections');
+const kwsVadStatus = document.getElementById('kws-vad-status');
+
+kwsThreshold.addEventListener('input', () => {
+  kwsThresholdVal.textContent = parseFloat(kwsThreshold.value).toFixed(2);
+});
+
+let kwsListening = false;
+
+kwsStartBtn.addEventListener('click', () => {
+  if (kwsListening) {
+    fetch('/api/kws/stop', { method: 'POST' });
+    kwsStartBtn.textContent = '开始监听';
+    kwsStartBtn.style.background = '#4caf84';
+    kwsListening = false;
+    kwsVadStatus.textContent = 'VAD: --';
+    kwsDetections.innerHTML = '';
+  } else {
+    const keywords = kwsKeywords.value.split('\n').filter(k => k.trim());
+    fetch('/api/kws/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        keywordsBuf: keywords.join('/'),
+        threshold: parseFloat(kwsThreshold.value)
+      })
+    });
+    kwsStartBtn.textContent = '停止监听';
+    kwsStartBtn.style.background = '#c73d54';
+    kwsListening = true;
+  }
+});
+
+let lastDetectionCount = 0;
+function updateKWS() {
+  if (!kwsListening) return;
+  fetch('/api/kws/status')
+    .then(r => r.json())
+    .then(data => {
+      kwsVadStatus.textContent = 'VAD: ' + (data.state === 'listening' ? '监听中' : data.state);
+      if (data.detections && data.detections.length > lastDetectionCount) {
+        const newOnes = data.detections.slice(lastDetectionCount);
+        newOnes.forEach(d => {
+          const div = document.createElement('div');
+          div.className = 'log-entry';
+          div.textContent = '[' + new Date(d.time).toLocaleTimeString() + '] ' + d.keyword;
+          kwsDetections.insertBefore(div, kwsDetections.firstChild);
+        });
+        if (kwsDetections.children.length > 30) {
+          while (kwsDetections.children.length > 30) kwsDetections.lastChild.remove();
+        }
+      }
+      lastDetectionCount = (data.detections || []).length;
+    })
+    .catch(() => { kwsVadStatus.textContent = 'VAD: 连接失败'; });
+}
+</script>
+</body>
+</html>
