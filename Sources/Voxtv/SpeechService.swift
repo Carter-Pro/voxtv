@@ -34,7 +34,8 @@ struct SpeechResult {
 }
 
 final class SpeechService: @unchecked Sendable {
-    private let engine = AVAudioEngine()
+    private var engine = AVAudioEngine()
+    private var engineDidCleanup = false
     private var recognizer: SFSpeechRecognizer?
     private var recognitionTask: SFSpeechRecognitionTask?
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
@@ -64,25 +65,32 @@ final class SpeechService: @unchecked Sendable {
     }
 
     func recognize(completion: @escaping @Sendable (Result<SpeechResult, SpeechError>) -> Void) {
+        engineDidCleanup = false
         guard micPermission, speechPermission else {
             completion(.failure(.permissionDenied))
             return
         }
 
         let inputNode = engine.inputNode
-        let recordingFormat = inputNode.outputFormat(forBus: 0)
+        let recordingFormat = inputNode.inputFormat(forBus: 0)
+        print("[SpeechService] format: \(recordingFormat)")
+        guard recordingFormat.sampleRate > 0, recordingFormat.channelCount > 0 else {
+            completion(.failure(.microphoneInUse))
+            return
+        }
         let request = SFSpeechAudioBufferRecognitionRequest()
         self.recognitionRequest = request
         self.resultSemaphore = DispatchSemaphore(value: 0)
         self.latestResult = nil
-        request.shouldReportPartialResults = false
+        request.shouldReportPartialResults = true
 
         guard let recognizer = recognizer, recognizer.isAvailable else {
             completion(.failure(.networkUnavailable))
             return
         }
 
-        recognitionTask = recognizer.recognitionTask(with: request) { result, error in
+        recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
+            guard let self else { return }
             if let error {
                 let nsErr = error as NSError
                 let speechErr: SpeechError = {
@@ -96,6 +104,7 @@ final class SpeechService: @unchecked Sendable {
                     return .recognitionFailed
                 }()
                 completion(.failure(speechErr))
+                self.cleanupEngine()
                 return
             }
             if let result = result {
@@ -106,11 +115,12 @@ final class SpeechService: @unchecked Sendable {
                 if result.isFinal {
                     self.resultSemaphore?.signal()
                     completion(.success(speechResult))
+                    self.cleanupEngine()
                 }
             }
         }
 
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { buffer, _ in
             request.append(buffer)
         }
 
@@ -126,15 +136,23 @@ final class SpeechService: @unchecked Sendable {
     func finish() -> SpeechResult? {
         recognitionRequest?.endAudio()
         _ = resultSemaphore?.wait(timeout: .now() + 5)
+        cleanupEngine()
         return latestResult
     }
 
     func cancelRecognition() {
-        engine.inputNode.removeTap(onBus: 0)
         recognitionTask?.cancel()
         recognitionTask = nil
         recognitionRequest = nil
         resultSemaphore?.signal()
+        cleanupEngine()
+    }
+
+    private func cleanupEngine() {
+        guard !engineDidCleanup else { return }
+        engineDidCleanup = true
+        engine.inputNode.removeTap(onBus: 0)
         engine.stop()
+        engine.reset()
     }
 }

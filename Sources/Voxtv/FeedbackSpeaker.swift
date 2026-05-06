@@ -1,15 +1,17 @@
-import AppKit
+import AVFoundation
 
 /// Speaks feedback messages via macOS built-in TTS.
 final class FeedbackSpeaker {
-    private let synth = NSSpeechSynthesizer()
+    private let synth = AVSpeechSynthesizer()
 
     /// Speak a feedback message (non-blocking). Stops any in-progress speech first.
     func speak(_ text: String) {
         if synth.isSpeaking {
-            synth.stopSpeaking()
+            synth.stopSpeaking(at: .immediate)
         }
-        synth.startSpeaking(text)
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = AVSpeechSynthesisVoice(language: "zh-CN")
+        synth.speak(utterance)
     }
 
     /// "已搜索 星际穿越"

@@ -39,6 +39,7 @@ struct VoxtvApp: App {
         )
         let dash = dashboard
         kwSpotter.onDetection = { keyword in
+            Task { await logStore.append(level: .info, message: "KWS detected: \(keyword)") }
             dash.recordKWSDetection(keyword)
         }
         dashboard.keywordSpotter = kwSpotter
@@ -65,10 +66,13 @@ struct VoxtvApp: App {
         wakePipeline.recognitionTimeout = appState.recognitionTimeout
         wakePipeline.cooldownDuration = appState.cooldownDuration
 
-        // Log pipeline state changes
+        // Log pipeline state changes and debug events
         let store = logStore
         wakePipeline.onStateChange = { state in
-            Task { await store.append(level: .info, message: "Pipeline: \(state.rawValue)") }
+            Task { await store.append(level: .info, message: "Pipeline state: \(state.rawValue)") }
+        }
+        wakePipeline.onLog = { message in
+            Task { await store.append(level: .debug, message: message) }
         }
 
         dashboard.wakePipeline = wakePipeline

@@ -35,8 +35,9 @@ final class WakePipeline: @unchecked Sendable {
     private var cachedKeywordsBuf: String = ""
     private var cachedThreshold: Float = 0.25
 
-    // Callback for Dashboard
+    // Callbacks for Dashboard / logging
     var onStateChange: (@Sendable (PipelineState) -> Void)?
+    var onLog: (@Sendable (String) -> Void)?
 
     // MARK: - Init
 
@@ -61,52 +62,69 @@ final class WakePipeline: @unchecked Sendable {
         }
         try spotter?.start(keywordsBuf: keywordsBuf, threshold: threshold)
         transition(to: .kwsListening)
+        log("pipeline started, listening for wake word")
     }
 
     func stop() {
         cooldownTask?.cancel()
         spotter?.stop()
         transition(to: .idle)
+        log("pipeline stopped")
     }
 
     // MARK: - Pipeline stages
 
     private func handleWakeDetection(_ keyword: String) {
+        log("wake word detected: '\(keyword)', stopping KWS")
         transition(to: .cooldown)
         spotter?.stop()
 
         transition(to: .prompting)
-        if promptType == "tts" {
-            prompt?.speak(promptText)
+        let currentPromptType = UserDefaults.standard.string(forKey: "promptType") ?? promptType
+        let currentPromptText = UserDefaults.standard.string(forKey: "promptText") ?? promptText
+        let currentFeedbackEnabled = UserDefaults.standard.object(forKey: "feedbackEnabled") as? Bool ?? feedbackEnabled
+        log("playing prompt (type=\(currentPromptType))")
+        if currentPromptType == "tts" {
+            prompt?.speak(currentPromptText)
             DispatchQueue.global().asyncAfter(deadline: .now() + 1.2) { [weak self] in
                 self?.startRecognition()
             }
         } else {
             prompt?.playBeep()
+            log("beep played, starting speech recognition")
             startRecognition()
         }
     }
 
     private func startRecognition() {
         transition(to: .recognizing)
+        log("speech recognition started (timeout=\(recognitionTimeout)s)")
         guard let speech = speech else {
             handlePipelineError("SpeechService not configured")
             return
         }
 
+        final class TimeoutFlag: @unchecked Sendable { var fired = false }
+        let flag = TimeoutFlag()
         let timeoutTask = DispatchWorkItem { [weak self] in
+            flag.fired = true
+            self?.log("recognition timeout, canceling")
             self?.speech?.cancelRecognition()
-            self?.feedback?.speakNoSpeech()
-            self?.startCooldown(duration: self?.cooldownDuration ?? 3.0)
+            // cancelRecognition triggers the completion handler with an error,
+            // which will call handleRecognitionError → startCooldown.
+            // DO NOT call startCooldown here — avoid double restart.
         }
         DispatchQueue.global().asyncAfter(deadline: .now() + recognitionTimeout, execute: timeoutTask)
 
         speech.recognize { [weak self] result in
             timeoutTask.cancel()
+            guard !flag.fired else { return }
             switch result {
             case .success(let r):
+                self?.log("recognition result: '\(r.text)' (raw: '\(r.rawText)')")
                 self?.handleRecognitionResult(r.text)
             case .failure(let e):
+                self?.log("recognition error: \(e.localizedDescription)")
                 self?.handleRecognitionError(e)
             }
         }
@@ -115,6 +133,7 @@ final class WakePipeline: @unchecked Sendable {
     private func handleRecognitionResult(_ text: String) {
         let cleaned = TextNormalizer.normalize(text)
         guard !cleaned.isEmpty else {
+            log("recognition result empty after normalization")
             feedback?.speakNoSpeech()
             startCooldown(duration: cooldownDuration)
             return
@@ -122,23 +141,33 @@ final class WakePipeline: @unchecked Sendable {
 
         transition(to: .dispatching)
         let result = dispatcher?.dispatch(text: cleaned) ?? DispatchResult(action: .sendText, text: cleaned)
+        log("dispatch: action=\(result.action.rawValue) text='\(result.text)'")
 
-        let sendOk = bridge?.send(text: result.text).success ?? false
+        let bridgeResult = bridge?.send(text: result.text)
+        let sendOk = bridgeResult?.success ?? false
+        log("appleTV send: ok=\(sendOk)" + (sendOk ? "" : " stderr=\(bridgeResult?.stderr ?? "")"))
 
         transition(to: .feedback)
-        if feedbackEnabled {
+        let feedbackOn = UserDefaults.standard.object(forKey: "feedbackEnabled") as? Bool ?? feedbackEnabled
+        if feedbackOn {
             if sendOk {
+                log("speaking feedback: success '\(result.text)'")
                 feedback?.speakSuccess(query: result.text)
             } else {
+                log("speaking feedback: send failed")
                 feedback?.speakSendFailed()
             }
+        } else {
+            log("feedback disabled, skipping TTS")
         }
 
         startCooldown(duration: cooldownDuration)
     }
 
     private func handleRecognitionError(_ error: SpeechError) {
-        if feedbackEnabled {
+        log("handling recognition error: \(error)")
+        let feedbackOn = UserDefaults.standard.object(forKey: "feedbackEnabled") as? Bool ?? feedbackEnabled
+        if feedbackOn {
             switch error {
             case .noSpeech:
                 feedback?.speakNoSpeech()
@@ -154,9 +183,16 @@ final class WakePipeline: @unchecked Sendable {
     }
 
     private func handlePipelineError(_ message: String) {
+        log("pipeline error: \(message)")
         transition(to: .error)
         feedback?.speak(message)
         startCooldown(duration: cooldownDuration)
+    }
+
+    // MARK: - Helpers
+
+    private func log(_ message: String) {
+        onLog?("[Pipeline] \(message)")
     }
 
     // MARK: - Cooldown
@@ -172,14 +208,20 @@ final class WakePipeline: @unchecked Sendable {
 
     private func restartKWS() {
         guard state != .idle else { return }
-        do {
-            try spotter?.start(keywordsBuf: cachedKeywordsBuf, threshold: cachedThreshold)
-            spotter?.onDetection = { [weak self] keyword in
-                self?.handleWakeDetection(keyword)
+        log("restarting KWS in 0.3s...")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self, self.state != .idle else { return }
+            do {
+                try self.spotter?.start(keywordsBuf: self.cachedKeywordsBuf, threshold: self.cachedThreshold)
+                self.spotter?.onDetection = { [weak self] keyword in
+                    self?.handleWakeDetection(keyword)
+                }
+                self.transition(to: .kwsListening)
+                self.log("KWS restarted after cooldown")
+            } catch {
+                self.transition(to: .error)
+                self.log("KWS restart failed: \(error.localizedDescription)")
             }
-            transition(to: .kwsListening)
-        } catch {
-            transition(to: .error)
         }
     }
 

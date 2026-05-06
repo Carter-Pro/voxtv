@@ -345,9 +345,6 @@ final class DashboardServer: @unchecked Sendable {
     }
 
     private func handleKWSStart(body: String) -> (Int, String, String) {
-        guard let spotter = keywordSpotter else {
-            return (500, #"{"ok":false,"error":"KeywordSpotterService not configured"}"#, appJSON)
-        }
         guard let data = body.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let keywordsBuf = obj["keywordsBuf"] as? String
@@ -355,19 +352,39 @@ final class DashboardServer: @unchecked Sendable {
             return (400, #"{"ok":false,"error":"invalid body — expected {keywordsBuf: token_string, threshold: 0.6}"}"#, appJSON)
         }
         let threshold = (obj["threshold"] as? Float) ?? 0.25
-        let score = (obj["score"] as? Float) ?? 1.0
 
         let micAuthorized = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
 
-        if micAuthorized {
-            do {
-                try spotter.start(keywordsBuf: keywordsBuf, threshold: threshold, score: score)
-                log(.info, "KWS started")
-                return (200, #"{"ok":true,"state":"listening"}"#, appJSON)
-            } catch {
-                log(.error, "KWS start failed: \(error.localizedDescription)")
-                return (500, #"{"ok":false,"error":"\#(error.localizedDescription)"}"#, appJSON)
+        let startBlock = {
+            // Prefer pipeline if available (wake → prompt → speech → send → feedback).
+            // Fall back to raw KWS for testing (no pipeline wired).
+            if let pipeline = self.wakePipeline {
+                do {
+                    try pipeline.start(keywordsBuf: keywordsBuf, threshold: threshold)
+                    self.log(.info, "Pipeline started (KWS listening)")
+                    return (200, #"{"ok":true,"state":"listening","mode":"pipeline"}"#, self.appJSON)
+                } catch {
+                    self.log(.error, "Pipeline start failed: \(error.localizedDescription)")
+                    return (500, #"{"ok":false,"error":"\#(error.localizedDescription)"}"#, self.appJSON)
+                }
             }
+
+            // Fallback: raw KWS (for testing)
+            guard let spotter = self.keywordSpotter else {
+                return (500, #"{"ok":false,"error":"KeywordSpotterService not configured"}"#, self.appJSON)
+            }
+            do {
+                try spotter.start(keywordsBuf: keywordsBuf, threshold: threshold)
+                self.log(.info, "KWS started (raw mode, no pipeline)")
+                return (200, #"{"ok":true,"state":"listening","mode":"kws"}"#, self.appJSON)
+            } catch {
+                self.log(.error, "KWS start failed: \(error.localizedDescription)")
+                return (500, #"{"ok":false,"error":"\#(error.localizedDescription)"}"#, self.appJSON)
+            }
+        }
+
+        if micAuthorized {
+            return startBlock()
         }
 
         // Mic not authorized — request permission asynchronously, then start.
@@ -381,21 +398,17 @@ final class DashboardServer: @unchecked Sendable {
                 NSApp.setActivationPolicy(.accessory)
             }
             guard granted else {
-                log(.error, "KWS: microphone permission denied")
+                self.log(.error, "KWS: microphone permission denied")
                 return
             }
-            do {
-                try spotter.start(keywordsBuf: keywordsBuf, threshold: threshold, score: score)
-                log(.info, "KWS started (after permission grant)")
-            } catch {
-                log(.error, "KWS start failed: \(error.localizedDescription)")
-            }
+            _ = startBlock()
         }
 
-        return (200, #"{"ok":true,"state":"listening"}"#, appJSON)
+        return (200, #"{"ok":true,"state":"listening"}"#, self.appJSON)
     }
 
     private func handleKWSStop() -> (Int, String, String) {
+        wakePipeline?.stop()
         keywordSpotter?.stop()
         return (200, #"{"ok":true,"state":"idle"}"#, appJSON)
     }

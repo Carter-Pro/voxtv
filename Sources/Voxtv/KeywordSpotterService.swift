@@ -36,7 +36,7 @@ enum KWSError: Error, LocalizedError, Sendable {
 /// - `onDetection` is called on the audio callback thread when a keyword fires
 /// - `onVADStateChange` reports near-real-time voice activity status
 final class KeywordSpotterService: @unchecked Sendable {
-    private let engine = AVAudioEngine()
+    private var engine = AVAudioEngine()
     private let modelDir: String
     private let vadModelPath: String
     private let log: (LogLevel, String) -> Void
@@ -152,7 +152,11 @@ final class KeywordSpotterService: @unchecked Sendable {
             interleaved: false
         )!
 
-        let inputFormat = engine.inputNode.outputFormat(forBus: 0)
+        let inputFormat = engine.inputNode.inputFormat(forBus: 0)
+        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
+            log(.error, "KWS: audio input not available (format=\(inputFormat))")
+            throw KWSError.engineStartFailed("No audio input device available")
+        }
 
         engine.inputNode.installTap(onBus: 0, bufferSize: 512, format: nil) { [weak self] buffer, _ in
             guard let self = self else { return }
@@ -190,6 +194,7 @@ final class KeywordSpotterService: @unchecked Sendable {
     private func teardown() {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
+        engine = AVAudioEngine()  // nil out old, create fresh — stop/start reuse is unreliable
         spotter = nil
         vad = nil
         state = .idle
@@ -240,7 +245,9 @@ final class KeywordSpotterService: @unchecked Sendable {
                 if !keyword.isEmpty {
                     log(.info, "KWS detected: \(keyword)")
                     spotter.reset()
-                    onDetection?(keyword)
+                    let callback = onDetection
+                    let kw = keyword
+                    DispatchQueue.global().async { callback?(kw) }
                 }
             }
         }
