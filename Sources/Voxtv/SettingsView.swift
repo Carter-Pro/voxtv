@@ -237,6 +237,15 @@ struct SettingsView: View {
                 Button("清除所有数据", role: .destructive) {
                     showClearConfirmation = true
                 }
+
+                Divider()
+
+                Text("软件更新")
+                    .font(.headline)
+
+                Button("检查更新") {
+                    appState.sparkleUpdater?.checkForUpdates()
+                }
             }
             .padding()
             .tabItem {

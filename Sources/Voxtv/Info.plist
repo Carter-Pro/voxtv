@@ -32,5 +32,9 @@
 	<string>VoxTV 需要使用语音识别将您的语音转换为文字。</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>VoxTV 需要访问本地网络以通过 pyatv 向 Apple TV 发送文本。</string>
+	<key>SUFeedURL</key>
+	<string>https://github.com/Carter-Pro/voxtv/releases/latest/download/appcast.xml</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
 </dict>
 </plist>

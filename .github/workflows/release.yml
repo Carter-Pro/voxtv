@@ -26,3 +26,17 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate AppCast
+        run: |
+          DMG_URL="https://github.com/${{ github.repository }}/releases/latest/download/VoxTV-Installer.dmg"
+          VERSION="${GITHUB_REF_NAME#v}"
+          ./scripts/generate-appcast.sh .build/VoxTV-Installer.dmg "$DMG_URL" "$VERSION" > .build/appcast.xml
+          echo "AppCast generated for version $VERSION"
+
+      - name: Upload AppCast to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: .build/appcast.xml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

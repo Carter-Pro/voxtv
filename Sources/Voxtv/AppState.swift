@@ -31,6 +31,7 @@ final class AppState: ObservableObject {
         }
     }
 
+    var sparkleUpdater: SparkleUpdater?
     private var dashboard: DashboardServer?
     private var wakePipeline: WakePipeline?
     private let defaults = UserDefaults.standard

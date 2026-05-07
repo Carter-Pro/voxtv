@@ -13,8 +13,11 @@ struct VoxtvApp: App {
         return NSImage(systemSymbolName: "mic.fill", accessibilityDescription: nil) ?? NSImage()
     }()
 
+    private let sparkle = SparkleUpdater()
+
     init() {
         let appState = AppState.shared
+        appState.sparkleUpdater = sparkle
         do {
             try dashboard.start()
             appState.serverRunning = true
