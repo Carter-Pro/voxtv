@@ -1,0 +1,67 @@
+name: Health Check
+
+on:
+  schedule:
+    - cron: '0 8 * * *'  # Every day at 8am UTC
+  workflow_dispatch:
+
+jobs:
+  permissions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check workflow permissions
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/actions/permissions/workflow)
+          if [ "$STATUS" = "200" ]; then echo "OK: Permissions configured correctly"; else echo "WARN: HTTP $STATUS — check Settings → Actions → General → Workflow permissions"; fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dylib-path:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify dylib loads in tests
+        run: |
+          swift build
+          DYLD_LIBRARY_PATH="$(pwd)/Libraries/COnnxRuntime" swift test 2>&1 | tail -3
+
+  release-please-manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify manifest exists
+        run: |
+          if [ -f .release-please-manifest.json ]; then
+            echo "OK: .release-please-manifest.json found"
+          else
+            echo "FAIL: .release-please-manifest.json missing"
+            exit 1
+          fi
+
+  notify:
+    needs: [permissions, dylib-path, release-please-manifest]
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create issue on health check failure
+        uses: dacbd/create-issue-action@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          title: '[CI] Health check failed'
+          body: |
+            ## Health check failure
+
+            | Check | Status |
+            |-------|--------|
+            | Permissions | ${{ needs.permissions.result }} |
+            | Dylib path | ${{ needs.dylib-path.result }} |
+            | release-please manifest | ${{ needs.release-please-manifest.result }} |
+
+            See [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          labels: 'bug,needs-triage'

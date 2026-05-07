@@ -1,5 +1,8 @@
 # VoxTV
 
+[![CI](https://github.com/Carter-Pro/voxtv/actions/workflows/ci.yml/badge.svg)](https://github.com/Carter-Pro/voxtv/actions/workflows/ci.yml)
+[![Release](https://github.com/Carter-Pro/voxtv/actions/workflows/release.yml/badge.svg)](https://github.com/Carter-Pro/voxtv/releases)
+
 Apple TV 语音控制 —— 一个 macOS 菜单栏应用，让你完全免提用中文语音控制 Apple TV。
 
 ## 功能特性

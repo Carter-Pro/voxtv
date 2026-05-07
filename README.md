@@ -1,5 +1,8 @@
 # VoxTV
 
+[![CI](https://github.com/Carter-Pro/voxtv/actions/workflows/ci.yml/badge.svg)](https://github.com/Carter-Pro/voxtv/actions/workflows/ci.yml)
+[![Release](https://github.com/Carter-Pro/voxtv/actions/workflows/release.yml/badge.svg)](https://github.com/Carter-Pro/voxtv/releases)
+
 Voice control for Apple TV — a macOS menu bar app that lets you speak to your Apple TV in Chinese, completely hands-free.
 
 ## Features

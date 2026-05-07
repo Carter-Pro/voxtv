@@ -18,3 +18,15 @@ jobs:
         run: swift test
         env:
           DYLD_LIBRARY_PATH: ${{ github.workspace }}/Libraries/COnnxRuntime
+
+      - name: Diagnose on failure
+        if: failure()
+        run: |
+          echo "=== Test failed. Collecting diagnostic info ==="
+          echo "--- dylib dependencies ---"
+          otool -L .build/debug/Voxtv 2>/dev/null | grep -E "onnx|not found" || echo "  No dylib issues found"
+          echo "--- DYLD_LIBRARY_PATH ---"
+          echo "${DYLD_LIBRARY_PATH:-not set}"
+          echo "--- dylib files ---"
+          ls -la Libraries/COnnxRuntime/*.dylib 2>/dev/null || echo "  No dylibs found"
+          echo "To fix 'Library not loaded' errors, ensure DYLD_LIBRARY_PATH is set to: $(pwd)/Libraries/COnnxRuntime"
