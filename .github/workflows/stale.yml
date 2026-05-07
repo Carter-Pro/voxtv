@@ -1,0 +1,20 @@
+name: Stale
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'  # Every Sunday
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/stale@v9
+        with:
+          days-before-stale: 90
+          days-before-close: 14
+          stale-issue-label: 'stale'
+          stale-issue-message: '此 issue 已 90 天无活动，将在 14 天后自动关闭。如有需要请重新打开。'
+          stale-pr-message: '此 PR 已 90 天无活动，将在 14 天后自动关闭。'
