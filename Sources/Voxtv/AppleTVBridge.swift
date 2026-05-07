@@ -18,6 +18,29 @@ final class AppleTVBridge {
     }
 
     func findAtvremotePath() -> String? {
+        // 1. Bundled in .app (for future PyInstaller build)
+        if let execPath = Bundle.main.executablePath {
+            let dir = (execPath as NSString).deletingLastPathComponent
+            let path = (dir as NSString).appendingPathComponent("atvremote")
+            if FileManager.default.isExecutableFile(atPath: path) {
+                return path
+            }
+        }
+        // 2. Known pipx / pip user install paths
+        let knownPaths = [
+            "\(NSHomeDirectory())/.local/bin/atvremote",
+            "\(NSHomeDirectory())/Library/Python/3.9/bin/atvremote",
+            "\(NSHomeDirectory())/Library/Python/3.10/bin/atvremote",
+            "\(NSHomeDirectory())/Library/Python/3.11/bin/atvremote",
+            "\(NSHomeDirectory())/Library/Python/3.12/bin/atvremote",
+            "\(NSHomeDirectory())/Library/Python/3.13/bin/atvremote",
+            "\(NSHomeDirectory())/Library/Python/3.14/bin/atvremote",
+            "/usr/local/bin/atvremote",
+        ]
+        for path in knownPaths where FileManager.default.isExecutableFile(atPath: path) {
+            return path
+        }
+        // 3. PATH search (works in terminal, fails in .app)
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         task.arguments = ["which", "atvremote"]
