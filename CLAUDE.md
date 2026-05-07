@@ -455,7 +455,31 @@ commit 6: add config and log viewer
 
 ---
 
-## 15. Agent skills
+## 15. CI/CD
+
+### 工作流概述
+
+| 工作流 | 触发 | 用途 |
+|--------|------|------|
+| `ci.yml` | PR + push to main | 构建 + 测试，macOS 15 |
+| `release-please.yml` | push to main | 语义化版本 + 自动 changelog |
+| `release.yml` | 标签推送 | 构建 DMG 并发布 GitHub Release |
+| `health-check.yml` | 每日 8:00 UTC / 手动 | 健康检查：权限、dylib、manifest |
+
+### CI/CD 故障排除
+
+当 GitHub Actions 工作流失败时：
+1. 使用 MCP 工具 `list_workflow_runs` 查看最近的 workflow 运行（参数：`owner: "Carter-Pro"`, `repo: "voxtv"`）
+2. 使用 `get_workflow_run_logs` 获取失败日志
+3. 基于日志用 `/diagnose` 诊断根因
+4. 代码/配置问题 → 直接修复并推送
+5. 权限/设置问题 → 创建 Issue 描述所需操作
+
+**GitHub MCP Server** 已配置（`github-mcp`），提供 90+ GitHub API 工具。
+
+---
+
+## 16. Agent skills
 
 ### Issue tracker
 
