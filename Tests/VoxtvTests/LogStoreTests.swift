@@ -54,4 +54,36 @@ final class LogStoreTests: XCTestCase {
         XCTAssertNotNil(parsed)
         XCTAssertEqual(parsed?.count, 1)
     }
+
+    func testFileLogging() async {
+        let store = LogStore(maxSize: 10)
+        await store.append(level: .info, message: "test file log")
+
+        let lib = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first!
+        let logDir = lib.appendingPathComponent("Logs/Voxtv")
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        df.locale = Locale(identifier: "en_US_POSIX")
+        let fileName = "voxtv-\(df.string(from: Date())).log"
+        let logFile = logDir.appendingPathComponent(fileName)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: logFile.path), "Log file should exist at \(logFile.path)")
+    }
+
+    func testLogFileContainsJSON() async {
+        let store = LogStore(maxSize: 10)
+        await store.append(level: .error, message: "crash test message")
+
+        let lib = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first!
+        let logDir = lib.appendingPathComponent("Logs/Voxtv")
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        df.locale = Locale(identifier: "en_US_POSIX")
+        let logFile = logDir.appendingPathComponent("voxtv-\(df.string(from: Date())).log")
+
+        let content = try? String(contentsOf: logFile, encoding: .utf8)
+        XCTAssertNotNil(content)
+        XCTAssertTrue(content?.contains("crash test message") ?? false)
+        XCTAssertTrue(content?.contains("\"level\":\"error\"") ?? false)
+    }
 }

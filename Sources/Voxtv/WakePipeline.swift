@@ -79,20 +79,20 @@ final class WakePipeline: @unchecked Sendable {
         transition(to: .cooldown)
         spotter?.stop()
 
-        transition(to: .prompting)
         let currentPromptType = UserDefaults.standard.string(forKey: "promptType") ?? promptType
         let currentPromptText = UserDefaults.standard.string(forKey: "promptText") ?? promptText
-        let currentFeedbackEnabled = UserDefaults.standard.object(forKey: "feedbackEnabled") as? Bool ?? feedbackEnabled
-        log("playing prompt (type=\(currentPromptType))")
+        log("starting recognition engine before prompt (type=\(currentPromptType))")
+
+        // Start recognition engine first — initializes synchronously before cueing user
+        startRecognition()
+
+        // Engine is now running, play prompt to cue user
         if currentPromptType == "tts" {
             prompt?.speak(currentPromptText)
-            DispatchQueue.global().asyncAfter(deadline: .now() + 1.2) { [weak self] in
-                self?.startRecognition()
-            }
+            // TTS plays while recognition is already capturing audio
         } else {
             prompt?.playBeep()
-            log("beep played, starting speech recognition")
-            startRecognition()
+            log("beep played, recognition already active")
         }
     }
 
@@ -107,12 +107,16 @@ final class WakePipeline: @unchecked Sendable {
         final class TimeoutFlag: @unchecked Sendable { var fired = false }
         let flag = TimeoutFlag()
         let timeoutTask = DispatchWorkItem { [weak self] in
+            guard let self, !flag.fired else { return }
             flag.fired = true
-            self?.log("recognition timeout, canceling")
-            self?.speech?.cancelRecognition()
-            // cancelRecognition triggers the completion handler with an error,
-            // which will call handleRecognitionError → startCooldown.
-            // DO NOT call startCooldown here — avoid double restart.
+            self.log("recognition timeout, finishing")
+            if let result = self.speech?.finish(), !result.text.isEmpty {
+                self.log("recognition finished with text: '\(result.text)'")
+                self.handleRecognitionResult(result.text)
+            } else {
+                self.log("recognition finished — no speech detected")
+                self.handleRecognitionError(.noSpeech)
+            }
         }
         DispatchQueue.global().asyncAfter(deadline: .now() + recognitionTimeout, execute: timeoutTask)
 
@@ -128,6 +132,7 @@ final class WakePipeline: @unchecked Sendable {
                 self?.handleRecognitionError(e)
             }
         }
+        log("recognition engine initialized, audio capture active")
     }
 
     private func handleRecognitionResult(_ text: String) {

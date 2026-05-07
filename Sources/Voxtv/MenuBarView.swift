@@ -7,13 +7,23 @@ struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .center, spacing: 6) {
                 Circle()
-                    .fill(appState.daemonRunning ? Color.green : Color.gray)
+                    .fill(appState.kwsRunning ? Color.green : Color.gray)
                     .frame(width: 8, height: 8)
-                Text(appState.daemonRunning ? "守护进程运行中" : "守护进程未启动")
+                Text(appState.kwsRunning ? "监听中" : "未监听")
                     .font(.system(size: 13))
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
+
+            Divider()
+
+            Button(appState.kwsRunning ? "停止监听" : "开始监听") {
+                if appState.kwsRunning {
+                    appState.stopKWS()
+                } else {
+                    appState.startKWS()
+                }
+            }
 
             Divider()
 

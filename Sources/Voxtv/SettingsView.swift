@@ -5,6 +5,12 @@ struct SettingsView: View {
     @State private var portText: String = ""
     @State private var deviceIdText: String = ""
 
+    private let systemSoundNames = [
+        "Basso", "Blow", "Bottle", "Frog", "Funk",
+        "Glass", "Hero", "Morse", "Ping", "Pop",
+        "Purr", "Sosumi", "Submarine", "Tink"
+    ]
+
     var body: some View {
         TabView {
             VStack(spacing: 12) {
@@ -63,7 +69,7 @@ struct SettingsView: View {
             }
 
             VStack(alignment: .leading, spacing: 12) {
-                Text("语音交互")
+                Text("提示音")
                     .font(.headline)
 
                 Picker("提示音类型:", selection: Binding(
@@ -75,6 +81,27 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.radioGroup)
 
+                if appState.promptType == "beep" {
+                    HStack {
+                        Text("系统声音:")
+                        Picker("", selection: Binding(
+                            get: { appState.beepSoundName },
+                            set: { appState.saveBeepSoundName($0) }
+                        )) {
+                            ForEach(systemSoundNames, id: \.self) { name in
+                                Text(name).tag(name)
+                            }
+                        }
+                        .frame(width: 120)
+
+                        Button("试听") {
+                            if let sound = NSSound(named: appState.beepSoundName) {
+                                sound.play()
+                            }
+                        }
+                    }
+                }
+
                 if appState.promptType == "tts" {
                     HStack {
                         Text("提示文案:")
@@ -85,6 +112,38 @@ struct SettingsView: View {
                         .frame(width: 150)
                     }
                 }
+
+                Divider()
+
+                Text("唤醒词")
+                    .font(.headline)
+
+                HStack {
+                    Text("唤醒词:")
+                    TextField("例如: 电视电视", text: Binding(
+                        get: { appState.wakeWord },
+                        set: { appState.saveWakeWord($0) }
+                    ))
+                    .frame(width: 120)
+                    Text("(拼音自动生成)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                HStack {
+                    Text("阈值:")
+                    Slider(value: Binding(
+                        get: { Double(appState.wakeThreshold) },
+                        set: { appState.saveWakeThreshold(Float($0)) }
+                    ), in: 0.05...0.95, step: 0.05)
+                    .frame(width: 120)
+                    Text(String(format: "%.2f", appState.wakeThreshold))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .frame(width: 35)
+                }
+
+                Divider()
 
                 HStack {
                     Text("识别超时:")
@@ -120,7 +179,7 @@ struct SettingsView: View {
             }
             .padding()
             .tabItem {
-                Label("语音", systemImage: "waveform")
+                Label("唤醒词", systemImage: "waveform")
             }
 
             VStack(alignment: .leading, spacing: 12) {
@@ -150,6 +209,6 @@ struct SettingsView: View {
                 Label("Dashboard", systemImage: "globe")
             }
         }
-        .frame(width: 380, height: 320)
+        .frame(width: 400, height: 420)
     }
 }

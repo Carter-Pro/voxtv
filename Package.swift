@@ -11,7 +11,7 @@ let package = Package(
                 "CSherpaOnnx",
                 "COnnxRuntime",
             ],
-            resources: [.process("Resources")],
+            resources: [.process("Resources"), .process("Assets.xcassets")],
             linkerSettings: [
                 .unsafeFlags(["-L", "Libraries/CSherpaOnnx", "-lsherpa-onnx"]),
                 .unsafeFlags(["-L", "Libraries/COnnxRuntime", "-lonnxruntime"]),

@@ -3,6 +3,15 @@ import SwiftUI
 @main
 struct VoxtvApp: App {
     private let dashboard = DashboardServer()
+    private let menuBarIconImage: NSImage = {
+        if let url = Bundle.module.url(forResource: "MenuBarIcon", withExtension: "png") {
+            let img = NSImage(contentsOf: url) ?? NSImage()
+            img.isTemplate = true
+            img.size = NSSize(width: 18, height: 18)
+            return img
+        }
+        return NSImage(systemSymbolName: "mic.fill", accessibilityDescription: nil) ?? NSImage()
+    }()
 
     init() {
         let appState = AppState.shared
@@ -15,9 +24,14 @@ struct VoxtvApp: App {
             print("[Voxtv] Dashboard failed: \(error)")
         }
         dashboard.appleTVBridge = AppleTVBridge(deviceId: appState.appleTVDeviceId)
-        dashboard.speechService = SpeechService()
         let logStore = LogStore(maxSize: 200)
         dashboard.logStore = logStore
+
+        let speechSvc = SpeechService()
+        speechSvc.onLog = { message in
+            Task { await logStore.append(level: .debug, message: message) }
+        }
+        dashboard.speechService = speechSvc
         Task { await logStore.append(level: .info, message: "Voxtv App started") }
         // Create KeywordSpotterService for keyword wake-up
         func resolveModelPath(_ rel: String) -> String {
@@ -46,6 +60,9 @@ struct VoxtvApp: App {
 
         // Create pipeline components
         let promptPlayer = PromptPlayer()
+        promptPlayer.onLog = { message in
+            Task { await logStore.append(level: .debug, message: message) }
+        }
         let feedbackSpeaker = FeedbackSpeaker()
         let commandDispatcher = CommandDispatcher()
 
@@ -70,9 +87,20 @@ struct VoxtvApp: App {
         let store = logStore
         wakePipeline.onStateChange = { state in
             Task { await store.append(level: .info, message: "Pipeline state: \(state.rawValue)") }
+            // Sync kwsRunning to menu bar
+            let running = (state == .kwsListening)
+            DispatchQueue.main.async {
+                AppState.shared.kwsRunning = running
+            }
         }
         wakePipeline.onLog = { message in
             Task { await store.append(level: .debug, message: message) }
+            // If pipeline stopped for any reason, sync state
+            if message.contains("pipeline stopped") {
+                DispatchQueue.main.async {
+                    AppState.shared.kwsRunning = false
+                }
+            }
         }
 
         dashboard.wakePipeline = wakePipeline
@@ -83,12 +111,14 @@ struct VoxtvApp: App {
     }
 
     var body: some Scene {
-        MenuBarExtra("Voxtv", systemImage: "mic.fill") {
+        MenuBarExtra(isInserted: .constant(true), content: {
             MenuBarView(appState: AppState.shared)
-        }
+        }, label: {
+            Image(nsImage: menuBarIconImage)
+        })
         .menuBarExtraStyle(.menu)
 
-        Window("Voxtv 设置", id: "settings") {
+        WindowGroup("Voxtv 设置", id: "settings") {
             SettingsView(appState: AppState.shared)
         }
         .windowResizability(.contentSize)

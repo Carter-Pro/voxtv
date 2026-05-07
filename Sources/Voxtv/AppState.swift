@@ -17,8 +17,13 @@ final class AppState: ObservableObject {
     @Published var feedbackEnabled: Bool = true
     @Published var recognitionTimeout: Double = 8.0
     @Published var cooldownDuration: Double = 3.0
+    @Published var kwsRunning: Bool = false
+    @Published var beepSoundName: String = "Tink"
+    @Published var wakeWord: String = "电视电视"
+    @Published var wakeThreshold: Float = 0.25
 
     private var dashboard: DashboardServer?
+    private var wakePipeline: WakePipeline?
     private let defaults = UserDefaults.standard
     private var settingsWindow: NSWindow?
     private var settingsCloseObserver: (any NSObjectProtocol)?
@@ -38,11 +43,16 @@ final class AppState: ObservableObject {
         if savedTimeout > 0 { recognitionTimeout = savedTimeout }
         let savedCooldown = defaults.double(forKey: "cooldownDuration")
         if savedCooldown > 0 { cooldownDuration = savedCooldown }
+        beepSoundName = defaults.string(forKey: "beepSoundName") ?? "Tink"
+        wakeWord = defaults.string(forKey: "wakeWord") ?? "电视电视"
+        let savedThreshold = defaults.float(forKey: "wakeThreshold")
+        if savedThreshold > 0 { wakeThreshold = savedThreshold }
         updateDashboardURL()
     }
 
     func bind(_ server: DashboardServer) {
         dashboard = server
+        wakePipeline = server.wakePipeline
     }
 
     func updateDashboardURL() {
@@ -97,6 +107,70 @@ final class AppState: ObservableObject {
         defaults.set(duration, forKey: "cooldownDuration")
     }
 
+    func saveBeepSoundName(_ name: String) {
+        beepSoundName = name
+        defaults.set(name, forKey: "beepSoundName")
+    }
+
+    func saveWakeWord(_ word: String) {
+        let trimmed = word.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        wakeWord = trimmed
+        defaults.set(trimmed, forKey: "wakeWord")
+        restartKWSIfRunning()
+    }
+
+    func saveWakeThreshold(_ threshold: Float) {
+        wakeThreshold = threshold
+        defaults.set(threshold, forKey: "wakeThreshold")
+        restartKWSIfRunning()
+    }
+
+    func startKWS() {
+        guard let pipeline = wakePipeline, !kwsRunning else { return }
+        let word = wakeWord.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !word.isEmpty else {
+            print("[Voxtv] KWS start failed: wake word is empty")
+            return
+        }
+        let buf = PinyinTokenizer.keywordsBuf(from: word)
+        let threshold = wakeThreshold
+        // Dispatch to background — AVAudioEngine.start() must not run on main thread
+        // during a menu event, or ObjC exceptions will kill the process silently.
+        DispatchQueue.global().async { [weak self] in
+            guard let self else { return }
+            do {
+                try pipeline.start(keywordsBuf: buf, threshold: threshold)
+                Task { @MainActor in self.kwsRunning = true }
+            } catch {
+                print("[Voxtv] KWS start failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func stopKWS() {
+        wakePipeline?.stop()
+        kwsRunning = false
+    }
+
+    private func restartKWSIfRunning() {
+        guard kwsRunning else { return }
+        stopKWS()
+        let word = wakeWord.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !word.isEmpty else { return }
+        let buf = PinyinTokenizer.keywordsBuf(from: word)
+        let threshold = wakeThreshold
+        let pipeline = wakePipeline
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
+            do {
+                try pipeline?.start(keywordsBuf: buf, threshold: threshold)
+                Task { @MainActor in self.kwsRunning = true }
+            } catch {
+                print("[Voxtv] KWS restart failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
     var deviceConfigured: Bool {
         !appleTVDeviceId.isEmpty
     }
@@ -116,7 +190,7 @@ final class AppState: ObservableObject {
         let window = NSWindow(contentViewController: hosting)
         window.title = "Voxtv 设置"
         window.styleMask = [.titled, .closable, .miniaturizable]
-        window.setContentSize(NSSize(width: 400, height: 380))
+        window.setContentSize(NSSize(width: 420, height: 480))
         window.center()
         window.isReleasedWhenClosed = false
 

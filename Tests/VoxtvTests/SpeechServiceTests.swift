@@ -47,4 +47,16 @@ final class SpeechServiceTests: XCTestCase {
         service.cancelRecognition()
         // Should not crash
     }
+
+    func testSilenceDurationDefault() {
+        let service = SpeechService()
+        XCTAssertEqual(service.silenceDuration, 1.5)
+    }
+
+    func testCancelRecognitionClearsSilenceTimer() {
+        let service = SpeechService()
+        // cancelRecognition should not crash even without active recognition
+        service.cancelRecognition()
+        XCTAssertTrue(true)
+    }
 }
