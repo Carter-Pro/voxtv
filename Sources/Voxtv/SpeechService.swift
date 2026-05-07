@@ -70,12 +70,12 @@ final class SpeechService: @unchecked Sendable {
         return (mic, speech)
     }
 
-    func recognize(completion: @escaping @Sendable (Result<SpeechResult, SpeechError>) -> Void) {
+    func recognize(completion: @escaping @Sendable (Result<SpeechResult, SpeechError>) -> Void) -> Bool {
         engineDidCleanup = false
         guard micPermission, speechPermission else {
             log("permission denied (mic=\(micPermission) speech=\(speechPermission))")
             completion(.failure(.permissionDenied))
-            return
+            return false
         }
 
         let inputNode = engine.inputNode
@@ -84,7 +84,7 @@ final class SpeechService: @unchecked Sendable {
         guard recordingFormat.sampleRate > 0, recordingFormat.channelCount > 0 else {
             log("invalid input format, returning microphoneInUse")
             completion(.failure(.microphoneInUse))
-            return
+            return false
         }
         let request = SFSpeechAudioBufferRecognitionRequest()
         self.recognitionRequest = request
@@ -95,7 +95,7 @@ final class SpeechService: @unchecked Sendable {
         guard let recognizer = recognizer, recognizer.isAvailable else {
             log("recognizer unavailable")
             completion(.failure(.networkUnavailable))
-            return
+            return false
         }
         log("recognizer ready, locale=\(recognizer.locale.identifier)")
 
@@ -164,10 +164,11 @@ final class SpeechService: @unchecked Sendable {
         do {
             try engine.start()
             log("engine started, tap installed")
+            return true
         } catch {
             log("engine start failed: \(error.localizedDescription)")
             completion(.failure(.microphoneInUse))
-            return
+            return false
         }
     }
 

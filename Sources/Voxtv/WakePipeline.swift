@@ -84,24 +84,26 @@ final class WakePipeline: @unchecked Sendable {
         log("starting recognition engine before prompt (type=\(currentPromptType))")
 
         // Start recognition engine first — initializes synchronously before cueing user
-        startRecognition()
+        let recognitionStarted = startRecognition()
 
-        // Engine is now running, play prompt to cue user
-        if currentPromptType == "tts" {
-            prompt?.speak(currentPromptText)
-            // TTS plays while recognition is already capturing audio
-        } else {
-            prompt?.playBeep()
-            log("beep played, recognition already active")
+        // Only play prompt if recognition actually started
+        if recognitionStarted {
+            if currentPromptType == "tts" {
+                prompt?.speak(currentPromptText)
+                // TTS plays while recognition is already capturing audio
+            } else {
+                prompt?.playBeep()
+                log("beep played, recognition already active")
+            }
         }
     }
 
-    private func startRecognition() {
+    private func startRecognition() -> Bool {
         transition(to: .recognizing)
         log("speech recognition started (timeout=\(recognitionTimeout)s)")
         guard let speech = speech else {
             handlePipelineError("SpeechService not configured")
-            return
+            return false
         }
 
         final class TimeoutFlag: @unchecked Sendable { var fired = false }
@@ -120,7 +122,7 @@ final class WakePipeline: @unchecked Sendable {
         }
         DispatchQueue.global().asyncAfter(deadline: .now() + recognitionTimeout, execute: timeoutTask)
 
-        speech.recognize { [weak self] result in
+        let started = speech.recognize { [weak self] result in
             timeoutTask.cancel()
             guard !flag.fired else { return }
             switch result {
@@ -132,7 +134,12 @@ final class WakePipeline: @unchecked Sendable {
                 self?.handleRecognitionError(e)
             }
         }
-        log("recognition engine initialized, audio capture active")
+        if started {
+            log("recognition engine initialized, audio capture active")
+        } else {
+            log("recognition engine failed to start (permission or hardware)")
+        }
+        return started
     }
 
     private func handleRecognitionResult(_ text: String) {

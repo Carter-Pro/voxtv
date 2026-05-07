@@ -311,7 +311,7 @@ final class DashboardServer: @unchecked Sendable {
                 print("[Voxtv] Speech: permissions denied")
                 return
             }
-            svc.recognize { result in
+            _ = svc.recognize { result in
                 switch result {
                 case .success(let r): print("[Voxtv] Speech: \(r.text)")
                 case .failure(let e): print("[Voxtv] Speech failed: \(e.localizedDescription)")

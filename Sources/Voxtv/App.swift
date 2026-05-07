@@ -32,6 +32,13 @@ struct VoxtvApp: App {
             Task { await logStore.append(level: .debug, message: message) }
         }
         dashboard.speechService = speechSvc
+
+        // Request speech recognition permission at startup (mic already requested by KWS)
+        Task {
+            let (mic, speech) = await speechSvc.requestPermissions()
+            print("[Voxtv] Permissions — mic: \(mic), speech: \(speech)")
+        }
+
         Task { await logStore.append(level: .info, message: "Voxtv App started") }
         // Create KeywordSpotterService for keyword wake-up
         func resolveModelPath(_ rel: String) -> String {
