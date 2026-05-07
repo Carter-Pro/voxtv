@@ -1,5 +1,7 @@
 # Apple TV 语音输入助手技术任务文档
 
+> **状态：** Phase 2 完成，Phase 3 进行中。以下为完整技术设计文档。
+
 ## 1. 项目背景
 
 用户家中有一台 Apple TV 和一台常驻运行的 Mac mini。Apple TV 未在中国大陆正式发售，中文输入体验差，Siri 不支持普通话，用户在搜索影片、剧集时需要用遥控器在横向键盘中输入拼音，效率低、体验差。
@@ -1201,6 +1203,60 @@ Mac mini Agent 常驻
 - 客厅 2 米距离唤醒率可接受。
 - 电视背景音下误唤醒可控。
 - 连续运行 4+ 小时稳定。
+
+---
+
+---
+
+## 品牌与图标
+
+### App 图标
+
+VoxTV 的 App 图标设计为圆角电视屏幕 + 声波曲线 + 隐含 V 形，使用蓝色渐变和白色线条。SVG 源文件位于 `design/VoxTV-AppIcon.svg`，通过 `swift scripts/generate-icons.swift` 生成 PNG 资源。
+
+打包时 `scripts/package-app.sh` 自动从 asset catalog 生成 `AppIcon.icns` 并放入 `.app` bundle。
+
+### 菜单栏图标
+
+菜单栏图标为单色 template image（`design/VoxTV-MenuBarIcon.svg`），保留核心符号：
+
+- 圆角电视外框（`rx="10" ry="10"`）
+- 简化声波 V 形
+- 迷你电视底座（短竖杆 + 短横杆）
+
+菜单栏图标作为 template image 使用（`isTemplate = true`），由 macOS 根据 light/dark mode 自动渲染颜色。不使用彩色渐变和 SF Symbol。
+
+---
+
+## sherpa-onnx 集成参考
+
+### 依赖
+
+- [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) v1.13.0+ (Apache 2.0)
+- [ONNX Runtime](https://github.com/microsoft/onnxruntime) v1.24.4+ (MIT)
+
+### 集成方式
+
+通过 SPM `systemLibrary` + module map 集成：
+- `Libraries/CSherpaOnnx/` — C 桥接头文件 + `libsherpa-onnx.a`（静态库）
+- `Libraries/COnnxRuntime/` — `libonnxruntime.1.24.4.dylib`（动态库）+ module map
+
+### 模型文件
+
+- KWS 模型：`sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile`（~10 MB，Apache 2.0）
+- VAD 模型：`silero_vad.onnx`（~644 KB，MIT）
+
+模型放置于 `Resources/kws/` 和 `Resources/vad/`。
+
+### 关键词配置
+
+唤醒词使用 ppinyin 格式：`d iàn sh ì d iàn sh ì @电视电视`。`PinyinTokenizer` 使用 `CFStringTransform` 将中文唤醒词自动转换为 ppinyin token。
+
+### 运行时行为
+
+- `KeywordSpotterService` 封装 AVAudioEngine + Silero VAD + sherpa-onnx KWS
+- VAD 在静音时跳过推理以降低 CPU 占用
+- 检测回调从音频线程异步派发到后台队列，避免阻塞 AVAudioEngine tap
 
 ---
 

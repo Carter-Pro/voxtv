@@ -1,3 +1,5 @@
+> **状态：** 未实施。当前菜单栏 App 内嵌 Dashboard HTTP server，单进程运行。进程拆分留待 Phase 3/4 评估。
+
 # ADR-0001: Agent 拆分为守护进程和菜单栏 UI 两个独立进程
 
 Agent 拆分为两个独立进程：守护进程（后台，负责语音识别、Apple TV 控制、HTTP server）和菜单栏 UI（前台，仅配置和日志查看）。两者通过 localhost HTTP 通信。
