@@ -148,16 +148,18 @@
   菜单栏版本保留核心符号：
 
   ```text
-  圆角电视外框 + 简化声波 V
+  圆角电视外框 + 简化声波 V + 迷你电视底座
   ```
 
   移除：
 
   - 背景渐变
   - 阴影
-  - 电视底座
   - 复杂色彩
   - 过细线条
+
+  注意：电视底座虽然在彩色 App 图标中细节丰富，但在菜单栏版本中必须保留简化版（短竖杆 + 短横杆）。
+  实测发现，20px 菜单栏下如果去掉底座，图标会退化为"圆角矩形 + 曲线"，无法识别为电视。
 
   ### 3.2 菜单栏 SVG 源文件
 
@@ -172,21 +174,33 @@
   ```svg
   <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
     <title id="title">VoxTV Menu Bar Icon</title>
-    <desc id="desc">A monochrome rounded TV outline with a simplified voice wave forming a hidden V shape.</desc>
-  
-    <rect x="7" y="13" width="50" height="36" rx="10" ry="10"
+    <desc id="desc">A monochrome rounded TV outline with a simplified voice wave and a small stand.</desc>
+
+    <rect x="7" y="10" width="50" height="36" rx="10" ry="10"
           fill="none"
           stroke="#000000"
           stroke-width="5.5"
           stroke-linecap="round"
           stroke-linejoin="round"/>
-  
-    <path d="M17 32 C21 32 21 39 25 39 C29 39 29 24 33 24 C37 24 37 39 41 39 C45 39 45 32 49 32"
+
+    <path d="M17 29 C21 29 21 36 25 36 C29 36 29 21 33 21 C37 21 37 36 41 36 C45 36 45 29 49 29"
           fill="none"
           stroke="#000000"
           stroke-width="6"
           stroke-linecap="round"
           stroke-linejoin="round"/>
+
+    <!-- Mini TV stand -->
+    <path d="M32 46 L32 53"
+          fill="none"
+          stroke="#000000"
+          stroke-width="4.5"
+          stroke-linecap="round"/>
+    <path d="M23 54 H41"
+          fill="none"
+          stroke="#000000"
+          stroke-width="4.5"
+          stroke-linecap="round"/>
   </svg>
   ```
 

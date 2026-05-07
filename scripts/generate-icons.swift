@@ -47,9 +47,9 @@ let appIconSizes: [(String, CGFloat)] = [
 
 // MenuBarIcon sizes
 let menuBarSizes: [(String, CGFloat)] = [
-    ("MenuBarIcon", 18),
-    ("MenuBarIcon@2x", 36),
-    ("MenuBarIcon@3x", 54),
+    ("MenuBarIcon", 20),
+    ("MenuBarIcon@2x", 40),
+    ("MenuBarIcon@3x", 60),
 ]
 
 let fm = FileManager.default
