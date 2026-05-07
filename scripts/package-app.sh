@@ -25,6 +25,14 @@ cp "$RELEASE_DIR/Voxtv" "$STAGING/$APP_BUNDLE/Contents/MacOS/"
 # Info.plist
 cp "$PROJECT_DIR/Sources/Voxtv/Info.plist" "$STAGING/$APP_BUNDLE/Contents/"
 
+# Inject version from git tag into Info.plist (for CI builds)
+if [ -n "${GITHUB_REF_NAME:-}" ] && [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+    VERSION="${GITHUB_REF_NAME#v}"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$STAGING/$APP_BUNDLE/Contents/Info.plist"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 1" "$STAGING/$APP_BUNDLE/Contents/Info.plist"
+    echo "  Version set to $VERSION from git tag"
+fi
+
 # Resource bundle (SPM output)
 cp -R "$RELEASE_DIR/Voxtv_Voxtv.bundle" "$STAGING/$APP_BUNDLE/Contents/Resources/"
 
