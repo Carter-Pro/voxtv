@@ -33,10 +33,15 @@ struct VoxtvApp: App {
         }
         dashboard.speechService = speechSvc
 
-        // Request speech recognition permission at startup (mic already requested by KWS)
+        // Request speech recognition permission at startup
         Task {
             let (mic, speech) = await speechSvc.requestPermissions()
             print("[Voxtv] Permissions — mic: \(mic), speech: \(speech)")
+        }
+        // Trigger local network permission dialog (Bonjour browse)
+        // Must be called on main actor for AppKit integration
+        DispatchQueue.main.async {
+            appState.requestLocalNetworkPermission()
         }
 
         Task { await logStore.append(level: .info, message: "Voxtv App started") }

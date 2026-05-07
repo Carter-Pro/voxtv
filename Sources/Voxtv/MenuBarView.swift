@@ -13,7 +13,20 @@ struct MenuBarView: View {
                     .font(.system(size: 13))
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 4)
+            .padding(.vertical, 2)
+
+            // Permission status
+            if !appState.localNetworkAuthorized {
+                HStack(spacing: 4) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10))
+                        .foregroundColor(.orange)
+                    Text("需要授权：本地网络")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 10)
+            }
 
             Divider()
 

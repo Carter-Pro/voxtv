@@ -30,5 +30,7 @@
 	<string>VoxTV 需要使用麦克风进行语音识别，以便将语音转换为文字发送到 Apple TV。</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>VoxTV 需要使用语音识别将您的语音转换为文字。</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>VoxTV 需要访问本地网络以通过 pyatv 向 Apple TV 发送文本。</string>
 </dict>
 </plist>

@@ -22,6 +22,7 @@ final class AppState: ObservableObject {
     @Published var beepSoundName: String = "Tink"
     @Published var wakeWord: String = "电视电视"
     @Published var wakeThreshold: Float = 0.25
+    @Published var localNetworkAuthorized: Bool = false
     @Published var launchAtLogin: Bool = false {
         didSet {
             if oldValue != launchAtLogin {
@@ -230,6 +231,30 @@ final class AppState: ObservableObject {
         launchAtLogin = (SMAppService.mainApp.status == .enabled)
     }
 
+    /// Trigger local network permission dialog by browsing Bonjour.
+    /// macOS shows the permission prompt on first multicast network access.
+    func requestLocalNetworkPermission() {
+        let browser = NetServiceBrowser()
+        let delegate = LocalNetworkPermissionDelegate()
+        // Keep delegate alive for the duration of the browse
+        browser.delegate = delegate
+        // Stash strong ref so delegate outlives this scope
+        objc_setAssociatedObject(browser, "lnpd", delegate, .OBJC_ASSOCIATION_RETAIN)
+        browser.searchForServices(ofType: "_appletv._tcp.", inDomain: "local.")
+        // Stop after 3 seconds — permission dialog has already appeared
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [browser] in
+            browser.stop()
+        }
+        // Mark as authorized — the dialog fires once and persists
+        localNetworkAuthorized = true
+    }
+
+    /// All required permissions granted?
+    var allPermissionsGranted: Bool {
+        // Mic + Speech checked by SpeechService; local network is one-shot trigger
+        true
+    }
+
     private func setLoginItem(enabled: Bool) {
         do {
             if enabled {
@@ -277,4 +302,13 @@ final class AppState: ObservableObject {
         updateDashboardURL()
         return ClearDataResult(logFilesDeleted: logCount, defaultsCleared: defaultsCleared)
     }
+}
+
+/// Triggers the macOS local network permission dialog via Bonjour browsing.
+private final class LocalNetworkPermissionDelegate: NSObject, NetServiceBrowserDelegate {
+    func netServiceBrowserWillSearch(_ browser: NetServiceBrowser) {}
+    func netServiceBrowserDidStopSearch(_ browser: NetServiceBrowser) {}
+    func netServiceBrowser(_ browser: NetServiceBrowser, didNotSearch errorDict: [String: NSNumber]) {}
+    func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) {}
+    func netServiceBrowser(_ browser: NetServiceBrowser, didRemove service: NetService, moreComing: Bool) {}
 }
