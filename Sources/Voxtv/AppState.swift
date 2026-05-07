@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import ServiceManagement
 
 @MainActor
 final class AppState: ObservableObject {
@@ -21,6 +22,13 @@ final class AppState: ObservableObject {
     @Published var beepSoundName: String = "Tink"
     @Published var wakeWord: String = "电视电视"
     @Published var wakeThreshold: Float = 0.25
+    @Published var launchAtLogin: Bool = false {
+        didSet {
+            if oldValue != launchAtLogin {
+                setLoginItem(enabled: launchAtLogin)
+            }
+        }
+    }
 
     private var dashboard: DashboardServer?
     private var wakePipeline: WakePipeline?
@@ -48,6 +56,7 @@ final class AppState: ObservableObject {
         let savedThreshold = defaults.float(forKey: "wakeThreshold")
         if savedThreshold > 0 { wakeThreshold = savedThreshold }
         updateDashboardURL()
+        checkLoginItemStatus()
     }
 
     func bind(_ server: DashboardServer) {
@@ -215,5 +224,57 @@ final class AppState: ObservableObject {
         }
 
         settingsWindow = window
+    }
+
+    func checkLoginItemStatus() {
+        launchAtLogin = (SMAppService.mainApp.status == .enabled)
+    }
+
+    private func setLoginItem(enabled: Bool) {
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+        } catch {
+            print("[Voxtv] SMAppService error: \(error.localizedDescription)")
+            launchAtLogin = SMAppService.mainApp.status == .enabled
+        }
+    }
+
+    struct ClearDataResult {
+        let logFilesDeleted: Int
+        let defaultsCleared: Bool
+    }
+
+    func clearAllData() -> ClearDataResult {
+        var logCount = 0
+        var defaultsCleared = false
+        // Clear UserDefaults
+        if let bundleID = Bundle.main.bundleIdentifier {
+            UserDefaults.standard.removePersistentDomain(forName: bundleID)
+            defaultsCleared = true
+        }
+        // Clear log files — count before deleting
+        let logDir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("Logs/Voxtv")
+        if let files = try? FileManager.default.contentsOfDirectory(at: logDir, includingPropertiesForKeys: nil) {
+            logCount = files.filter { $0.pathExtension == "log" }.count
+        }
+        try? FileManager.default.removeItem(at: logDir)
+        // Reset local state
+        appleTVDeviceId = ""
+        beepSoundName = "Tink"
+        wakeWord = "电视电视"
+        wakeThreshold = 0.25
+        recognitionTimeout = 8.0
+        cooldownDuration = 3.0
+        promptType = "beep"
+        promptText = "请说"
+        feedbackEnabled = true
+        dashboardPort = 8765
+        updateDashboardURL()
+        return ClearDataResult(logFilesDeleted: logCount, defaultsCleared: defaultsCleared)
     }
 }

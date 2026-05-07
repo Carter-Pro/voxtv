@@ -4,6 +4,9 @@ struct SettingsView: View {
     @ObservedObject var appState: AppState
     @State private var portText: String = ""
     @State private var deviceIdText: String = ""
+    @State private var showClearConfirmation = false
+    @State private var showClearResult = false
+    @State private var clearResultMessage = ""
 
     private let systemSoundNames = [
         "Basso", "Blow", "Bottle", "Frog", "Funk",
@@ -207,6 +210,52 @@ struct SettingsView: View {
             .padding()
             .tabItem {
                 Label("Dashboard", systemImage: "globe")
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text("高级")
+                    .font(.headline)
+
+                Toggle("开机自动启动", isOn: Binding(
+                    get: { appState.launchAtLogin },
+                    set: { appState.launchAtLogin = $0 }
+                ))
+
+                Text("登录时自动在后台启动 Voxtv，无需手动打开。")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                Divider()
+
+                Text("数据管理")
+                    .font(.headline)
+
+                Text("清除所有 Voxtv 数据：日志文件、配置信息将被永久删除。应用将保留在系统中。")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                Button("清除所有数据", role: .destructive) {
+                    showClearConfirmation = true
+                }
+            }
+            .padding()
+            .tabItem {
+                Label("高级", systemImage: "gearshape.2")
+            }
+            .alert("确定要清除所有数据吗？", isPresented: $showClearConfirmation) {
+                Button("取消", role: .cancel) {}
+                Button("清除", role: .destructive) {
+                    let result = appState.clearAllData()
+                    clearResultMessage = "已删除 \(result.logFilesDeleted) 个日志文件\(result.defaultsCleared ? "，配置已重置为默认值。" : "。")"
+                    showClearResult = true
+                }
+            } message: {
+                Text("此操作将永久删除所有日志文件和配置信息，应用将恢复为初始状态。此操作不可撤销。")
+            }
+            .alert("数据清理完成", isPresented: $showClearResult) {
+                Button("确定", role: .cancel) {}
+            } message: {
+                Text(clearResultMessage)
             }
         }
         .frame(width: 400, height: 420)

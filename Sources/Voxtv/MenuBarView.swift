@@ -44,6 +44,12 @@ struct MenuBarView: View {
 
             Divider()
 
+            Button(appState.launchAtLogin ? "取消开机自启" : "开机自动启动") {
+                appState.launchAtLogin.toggle()
+            }
+
+            Divider()
+
             Button("退出 Voxtv") {
                 NSApplication.shared.terminate(nil)
             }
