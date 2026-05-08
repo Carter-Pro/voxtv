@@ -4,6 +4,10 @@ on:
   pull_request:
   push:
     branches: [main]
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - '.github/ISSUE_TEMPLATE/**'
 
 jobs:
   build-and-test:
